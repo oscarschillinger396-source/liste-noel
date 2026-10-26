@@ -256,6 +256,12 @@ footer small{color:var(--frost);font-size:14px}
 .magique[open] summary::after{content:"  ▴ Fermer"}
 .magique-etapes{margin:0;padding-left:22px;display:grid;gap:10px;color:var(--snow)}
 .magique-btn{cursor:grab;margin-left:6px}
+.rang-lien{display:flex;gap:8px;align-items:stretch}
+.rang-lien input{flex:1;min-width:0}
+.rang-lien .effacer-lien{flex:none;text-transform:none;letter-spacing:.02em}
+.copier-btn{font:700 13px var(--label);letter-spacing:.08em;text-transform:uppercase;cursor:pointer;border:0;border-radius:8px;padding:7px 12px;
+  background:#e6efe9;color:#1d4a3d;white-space:nowrap}
+.copier-btn:hover{background:#d3e4da}
 
 /* Outils admin */
 .admin-box{display:grid;gap:12px;border:2px solid var(--gold);border-radius:14px;padding:16px 18px;background:rgba(242,195,91,.08)}
@@ -657,6 +663,19 @@ function carteCadeau(c, i, extra){
   if (u){
     const a = el("a", "go-btn"); a.href = u.href; a.target = "_blank"; a.rel = "noopener noreferrer";
     a.append("Voir ", el("span", "host", u.hostname.replace(/^www\./, "")), " ↗"); side.append(a);
+    const copier = bouton("copier-btn", "📋 Copier le lien", async () => {
+      let ok = false;
+      try{ await navigator.clipboard.writeText(u.href); ok = true; }
+      catch{
+        // Navigateur qui refuse : on copie à l'ancienne
+        const t = document.createElement("textarea"); t.value = u.href; document.body.append(t); t.select();
+        try{ ok = document.execCommand("copy"); }catch{}
+        t.remove();
+      }
+      copier.textContent = ok ? "✅ Lien copié !" : "Copie impossible";
+      setTimeout(() => { copier.textContent = "📋 Copier le lien"; }, 2000);
+    });
+    side.append(copier);
   }
   li.append(side);
   return li;
@@ -814,15 +833,26 @@ function vueMaListe(main){
   f.append(el("h2", null, c ? "Modifier le cadeau" : "Ajouter un cadeau"));
   f.append(champ("g-nom", "Cadeau", "text", {required: true, maxLength: 120, placeholder: "Ex. Combinaison de karting", value: c ? c.nom : ""}));
   const ligne = el("div", "ligne");
-  ligne.append(champ("g-lien", "Lien du produit", "url", {placeholder: "https://…", value: c ? c.lien : ""}));
-  ligne.append(champ("g-prix", "Prix (€)", "number", {min: 0, step: "0.01", inputMode: "decimal", value: c && c.prix != null ? c.prix : ""}));
+  // Un champ texte simple (pas « url ») : coller, effacer et recoller un lien marche partout, même sur téléphone
+  const blocLien = champ("g-lien", "Lien du produit", "text", {placeholder: "https://…", inputMode: "url", autocomplete: "off", spellcheck: false, value: c ? c.lien : ""});
+  const effacer = bouton("btn ghost small effacer-lien", "✕ Effacer", () => {
+    champLien.value = ""; dernierLienLu = ""; champLien.focus();
+    $("#g-info-lien").textContent = "Lien effacé. Colle un autre lien, ou laisse vide.";
+  });
+  effacer.title = "Effacer le lien";
+  const rangLien = el("div", "rang-lien"); rangLien.append(blocLien.querySelector("input"), effacer);
+  blocLien.append(rangLien);
+  ligne.append(blocLien);
+  ligne.append(champ("g-prix", "Prix (€)", "text", {inputMode: "decimal", placeholder: "Ex. 49,99", value: c && c.prix != null ? String(c.prix).replace(".", ",") : ""}));
   f.append(ligne);
   const infoLien = el("p", "aide"); infoLien.id = "g-info-lien";
   infoLien.textContent = c ? "" : "Colle le lien du produit : le prix, la taille et la couleur se remplissent tout seuls quand c'est possible.";
   f.append(infoLien);
-  const champLien = ligne.querySelector("#g-lien");
+  const champLien = blocLien.querySelector("#g-lien");
+  autoRempli = {}; dernierLienLu = c ? (c.lien || "") : "";
   champLien.addEventListener("change", () => remplirDepuisLien());
   champLien.addEventListener("paste", () => setTimeout(remplirDepuisLien, 0));
+  champLien.addEventListener("input", () => { if (!champLien.value.trim()) dernierLienLu = ""; });
   const coche = el("label", "coche"); coche.htmlFor = "g-estime";
   const cb = el("input"); cb.type = "checkbox"; cb.id = "g-estime"; cb.checked = !!(c && c.prixEstime);
   coche.append(cb, "Le prix est une estimation (« env. »)"); f.append(coche);
@@ -836,10 +866,14 @@ function vueMaListe(main){
     e.preventDefault();
     const nom = $("#g-nom").value.trim();
     if (!nom) return alerter(f, "Écris le nom du cadeau.");
-    const lienP = $("#g-lien").value.trim();
-    if (lienP && !safeUrl(lienP)) return alerter(f, "Le lien doit commencer par https://");
+    let lienP = $("#g-lien").value.trim();
+    if (lienP && !/^https?:\/\//i.test(lienP) && /^[\w-]+\.[\w.-]+\//.test(lienP)) lienP = "https://" + lienP; // « www.zara.com/… » sans https
+    if (lienP && !safeUrl(lienP)) return alerter(f, "Ce lien ne marche pas. Copie l'adresse complète du produit (elle commence par https://).");
+    lienP = nettoyerLien(lienP);
+    const prixTexte = $("#g-prix").value.trim();
+    if (prixTexte && !lirePrix(prixTexte)) return alerter(f, "Écris le prix avec des chiffres, par exemple 49,99.");
     alerter(f, ""); ok.disabled = true;
-    const prix = parseFloat($("#g-prix").value);
+    const prix = prixTexte ? lirePrix(prixTexte) : NaN;
     const nouveau = {id: c ? c.id : undefined, nom, lien: lienP, prix: isNaN(prix) ? null : prix,
       prixEstime: $("#g-estime").checked, precisions: $("#g-precisions").value.trim()};
     const cadeaux = c ? liste.cadeaux.map(x => x.id === c.id ? nouveau : x) : [...liste.cadeaux, nouveau];
@@ -918,19 +952,27 @@ function remplirDepuisBoutonMagique(){
   const adresse = lireAdresse(infos.lien);
   if (!infos.couleur) infos.couleur = adresse.couleur || "";
   if (!infos.taille) infos.taille = adresse.taille || "";
-  if (infos.nom) $("#g-nom").value = infos.nom.split(/\s[:|]\s/)[0].trim();
+  if (infos.nom) mettreAuto("g-nom", nomEssentiel(infos.nom));
   if (infos.lien && safeUrl(infos.lien)){ $("#g-lien").value = infos.lien; dernierLienLu = infos.lien; }
   const prix = lirePrix(infos.prix);
-  if (prix) $("#g-prix").value = prix;
+  if (prix) mettreAuto("g-prix", String(prix));
   const prec = [];
   if (infos.taille) prec.push("Taille " + (/^[a-z]{1,4}$/i.test(infos.taille) ? infos.taille.toUpperCase() : infos.taille));
   if (infos.couleur) prec.push("Couleur " + infos.couleur);
-  if (prec.length) $("#g-precisions").value = prec.join(", ");
+  if (prec.length) mettreAuto("g-precisions", prec.join(", "));
   const manque = [!prix && "le prix", !infos.taille && "la taille", !infos.couleur && "la couleur"].filter(Boolean);
   $("#g-info-lien").textContent = "⚡ Infos récupérées depuis la page du produit. "
     + (manque.length ? "Il manque " + manque.join(", ").replace(/, ([^,]*)$/, " et $1") + " : complète si besoin, puis " : "Vérifie, puis ")
     + "clique sur « Ajouter à ma liste ».";
   $("#g-nom").scrollIntoView({block: "center"});
+}
+// Enlève les morceaux de suivi des liens (« ?ref=…&utm_… ») pour garder une adresse courte qui marche
+function nettoyerLien(lien){
+  const u = safeUrl(lien); if (!u) return lien;
+  [...u.searchParams.keys()].forEach(k => { if (/^(utm_|ref|tag|srsltid|gclid|fbclid|psc|pd_rd|pf_rd|qid|sr|keywords|crid|sprefix|dib|th|_encoding|content-id|smid|spla)/i.test(k)) u.searchParams.delete(k); });
+  if (/amazon\./.test(u.hostname)){ const m = u.pathname.match(/\/dp\/[A-Z0-9]{10}/); if (m) return u.origin + m[0]; }
+  const propre = u.toString();
+  return propre.length > 480 ? u.origin + u.pathname + u.hash : propre;
 }
 // « 1 299,99 € » → 1299.99
 function lirePrix(t){
@@ -1013,6 +1055,18 @@ function boutonMagique(APP, lire){
     const m = e && e.textContent.replace(/ /g, " ").match(/\d[\d\s.]*(?:[,.]\d{1,2})?/);
     if (m) prix = m[0];
   }
+  // Dernier essai : le premier prix en euros écrit sur la page (pas un ancien prix barré)
+  if (!prix){
+    const barre = x => x.closest("del,s,strike,[class*='old' i],[class*='was' i],[class*='barr' i],[class*='strike' i],[class*='crossed' i],[class*='before' i]");
+    const titre = d.querySelector("h1");
+    for (const x of tous("body *")){
+      if (x.children.length || !x.offsetParent || barre(x)) continue;
+      if (titre && (titre.compareDocumentPosition(x) & 2)) continue; // avant le titre du produit : menus, bandeaux…
+      const t = x.textContent.replace(/ /g, " ").trim();
+      const m = t.length < 25 && t.match(/^(\d{1,4}(?:[ .]\d{3})*(?:[,.]\d{1,2})?)\s*€$|^€\s*(\d{1,4}(?:[ .]\d{3})*(?:[,.]\d{1,2})?)$/);
+      if (m){ prix = m[1] || m[2]; break; }
+    }
+  }
 
   // 3. La taille et la couleur que tu as choisies sur la page
   const zones = { taille: /taille|size|pointure|tama/i, couleur: /couleur|colou?r|coloris/i };
@@ -1057,6 +1111,31 @@ function lienBoutonMagique(){
   return "javascript:" + encodeURIComponent("(" + boutonMagique.toString() + ")(" + JSON.stringify(location.origin) + ")");
 }
 
+// Le nom du cadeau, juste l'essentiel : sans la couleur, sans la description après la virgule.
+// « Veste de ski et snowboard chaude et imperméable homme, 100 noir » → « Veste de ski et snowboard chaude et imperméable homme »
+const COULEURS_NOM = COULEURS.replace(/\|or\|/, "|") + "|dorée|argenté|argentée|écru|anthracite|camel|blanc cassé|bleu marine|bleu nuit";
+function nomEssentiel(nom){
+  let n = String(nom || "").replace(/\s+/g, " ").trim();
+  // On garde le début, mais au moins 3 mots (« Playstation Sony, Manette 5… » → « Playstation Sony Manette 5 Officielle DualSense »)
+  const morceaux = n.split(/\s[:|–]\s|\s-\s|,\s/).map(m => m.trim()).filter(Boolean);
+  let debut = morceaux[0] || "", i = 1;
+  while (debut.split(" ").length < 3 && i < morceaux.length) debut += " " + morceaux[i++];
+  if (debut.length >= 6) n = debut;
+  n = n.replace(new RegExp("\\b(" + COULEURS_NOM + ")(\\s+(et|/)\\s+(" + COULEURS_NOM + "))*\\b", "gi"), " ")
+    .replace(/\s+/g, " ").replace(/^[\s,/-]+|[\s,/-]+$/g, "").trim();
+  return n ? n.charAt(0).toUpperCase() + n.slice(1) : String(nom || "").trim();
+}
+
+// Ce que le site a rempli tout seul : si on change de lien, on peut le remplacer sans toucher à ce que tu as écrit toi-même
+let autoRempli = {};
+function mettreAuto(id, valeur){
+  const e = $("#" + id); if (!e) return false;
+  const actuel = e.value.trim();
+  if (actuel && actuel !== String(autoRempli[id] ?? "")) return false; // tu l'as écrit toi-même : on n'y touche pas
+  e.value = valeur; autoRempli[id] = e.value.trim();
+  return true;
+}
+
 // Quand on colle un lien : le serveur lit la page du produit, et on remplit les cases encore vides
 let dernierLienLu = "";
 async function remplirDepuisLien(){
@@ -1065,6 +1144,9 @@ async function remplirDepuisLien(){
   const lienP = champ.value.trim();
   if (!safeUrl(lienP) || lienP === dernierLienLu) return;
   dernierLienLu = lienP;
+  // Nouveau lien : ce qui avait été rempli tout seul pour l'ancien lien est effacé (pas ce que tu as écrit toi-même)
+  for (const [id, v] of Object.entries(autoRempli)){ const e = $("#" + id); if (e && e.value.trim() === v) e.value = ""; }
+  autoRempli = {};
   info.textContent = "🔎 Je cherche le prix, la taille et la couleur…";
   let r = {};
   try{ r = await api("apercu", {method: "POST", body: {lien: lienP}, auth: true}); }
@@ -1074,16 +1156,20 @@ async function remplirDepuisLien(){
   const adresse = lireAdresse(lienP);
   r.nom = nomUtile(r.nom, lienP) || adresse.nom;
   r.couleur = r.couleur || adresse.couleur;
+  r.taille = r.taille || adresse.taille;
   const trouve = [];
-  // « GILET OMP Karting : Gilets protège-côtes » → « GILET OMP Karting » ; « l » → « L »
-  if (r.nom) r.nom = r.nom.split(/\s[:|]\s/)[0].trim();
+  if (r.nom) r.nom = nomEssentiel(r.nom);
   if (r.taille && /^[a-z]{1,4}$/i.test(r.taille)) r.taille = r.taille.toUpperCase();
-  if (r.nom && !$("#g-nom").value.trim()){ $("#g-nom").value = r.nom; trouve.push("le nom"); }
-  if (r.prix && !$("#g-prix").value){ $("#g-prix").value = r.prix; $("#g-estime").checked = false; trouve.push("le prix"); }
+  if (r.nom && mettreAuto("g-nom", r.nom)) trouve.push("le nom");
+  if (r.prix && mettreAuto("g-prix", r.prix)){ $("#g-estime").checked = false; trouve.push("le prix"); }
   const prec = $("#g-precisions"), ajouts = [];
-  if (r.taille && !/taille|pointure/i.test(prec.value)){ ajouts.push("Taille " + r.taille); trouve.push("la taille"); }
-  if (r.couleur && !/couleur/i.test(prec.value)){ ajouts.push("Couleur " + r.couleur); trouve.push("la couleur"); }
-  if (ajouts.length) prec.value = [...ajouts, prec.value.trim()].filter(Boolean).join(", ");
+  if (r.taille){ ajouts.push("Taille " + r.taille); trouve.push("la taille"); }
+  if (r.couleur){ ajouts.push("Couleur " + r.couleur); trouve.push("la couleur"); }
+  if (ajouts.length && !mettreAuto("g-precisions", ajouts.join(", "))){
+    // Tu avais déjà écrit des précisions : on ajoute seulement ce qui manque
+    const manquants = ajouts.filter(a => !new RegExp("^" + a.split(" ")[0], "i").test(prec.value) && !prec.value.toLowerCase().includes(a.split(" ")[0].toLowerCase()));
+    if (manquants.length) prec.value = [...manquants, prec.value.trim()].filter(Boolean).join(", ");
+  }
   const manque = [];
   if (!r.prix && !$("#g-prix").value) manque.push("le prix");
   // La taille n'existe pas pour tous les cadeaux (une lampe, un Lego…) : on le rappelle seulement pour les vêtements et chaussures
