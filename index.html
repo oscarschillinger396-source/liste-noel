@@ -225,6 +225,12 @@ footer small{color:var(--frost);font-size:14px}
 .choix-d{font-size:16px;color:#3c524a}
 @media (prefers-reduced-motion:no-preference){ .choix-carte{transition:transform .15s ease} .choix-carte:hover{transform:translateY(-3px)} }
 
+/* Outils admin */
+.admin-box{display:grid;gap:12px;border:2px solid var(--gold);border-radius:14px;padding:16px 18px;background:rgba(242,195,91,.08)}
+.admin-tete{display:flex;flex-wrap:wrap;align-items:center;gap:10px;color:var(--snow)}
+.admin-badge{font:700 13px var(--label);letter-spacing:.1em;text-transform:uppercase;background:var(--gold);color:var(--night);border-radius:999px;padding:5px 11px}
+.admin-form{display:grid;gap:10px;max-width:420px}
+
 /* Connexion : on touche son prénom */
 .noms{display:flex;flex-wrap:wrap;gap:10px}
 .nom-btn{font-family:var(--display);font-size:24px;cursor:pointer;border:0;border-radius:10px;padding:10px 18px;
@@ -283,6 +289,11 @@ const SEED = (typeof LISTE !== "undefined" && LISTE) || null; // l'ancienne list
 let session = lireSession();      // { token, profil: { id, prenom } } quand on est connecté
 let invite = lireInvite();        // true quand on a choisi « Mode invité »
 let vueApres = null;              // la liste demandée avant l'écran d'entrée (lien partagé)
+let cible = null;                 // la liste qu'on modifie : la sienne, ou celle d'un autre pour l'admin
+let adminAction = null;           // "code" ou "supprimer" : l'outil admin ouvert sur une liste
+// Les admins peuvent modifier et supprimer toutes les listes (le serveur vérifie aussi)
+const ADMINS = ["oscar"];
+const estAdmin = () => !!(session && (session.profil.admin || ADMINS.includes(session.profil.id)));
 let enLigne = null;               // le serveur Netlify répond-il ?
 let vue = "accueil", vueId = null, listes = [], liste = null, chargement = false;
 let enCours = null, aConfirmer = null, msg = {}, fete = null, erreurForm = "", edition = null, aSupprimer = null;
@@ -344,9 +355,10 @@ function tableau(cases){
 /* ---------- Navigation (#accueil, #liste-oscar, #connexion, #inscription, #ma-liste) ---------- */
 async function aller(){
   const h = location.hash.replace(/^#/, "");
-  aConfirmer = null; msg = {}; erreurForm = ""; aSupprimer = null;
+  aConfirmer = null; msg = {}; erreurForm = ""; aSupprimer = null; adminAction = null;
   if (h.startsWith("liste-")){ vue = "liste"; vueId = h.slice(6); }
-  else if (["connexion", "inscription", "ma-liste"].includes(h)){ vue = h; }
+  else if (h.startsWith("modifier-") && estAdmin()){ vue = "ma-liste"; cible = h.slice(9); }
+  else if (["connexion", "inscription", "ma-liste"].includes(h)){ vue = h; if (h === "ma-liste" && session) cible = session.profil.id; }
   else if (h === "invite"){ choisirInvite(true); location.hash = "accueil"; return; }
   else { vue = "accueil"; }
   // Pas connecté et pas encore entré en invité : on montre d'abord l'écran d'entrée
@@ -361,7 +373,7 @@ async function aller(){
       if (vueId === "demo") liste = demo();
       else { liste = await api("listes/" + vueId); enLigne = true; }
     }
-    if (vue === "ma-liste"){ liste = await api("listes/" + session.profil.id, {auth: true}); enLigne = true; }
+    if (vue === "ma-liste"){ liste = await api("listes/" + cible, {auth: true}); enLigne = true; }
   }catch(e){
     if (vue === "ma-liste" && !session){ location.hash = "connexion"; return; }
     liste = null;
@@ -391,6 +403,7 @@ function renderNav(){
   const d = el("div", "nav-droite");
   if (session){
     const s = el("span", "statut"); s.append("Connecté : ", el("b", null, session.profil.prenom)); d.append(s);
+    if (estAdmin()) d.append(el("span", "admin-badge", "🛡️ Admin"));
     d.append(lien("#accueil", "btn ghost small", "Toutes les listes"));
     d.append(lien("#ma-liste", "btn small", "Ma liste"));
     d.append(bouton("btn deco small", "🚪 Se déconnecter", deconnecter));
@@ -486,6 +499,7 @@ function vueListe(main){
   bar.append(t);
   if (proprio) bar.append(lien("#ma-liste", "btn", "✏️ Modifier ma liste"));
   main.append(bar);
+  if (estAdmin() && !proprio && !liste.demo) main.append(outilsAdmin());
   const ol = el("ol", "grid");
   if (!liste.cadeaux.length){
     const li = el("li", "empty");
@@ -494,6 +508,54 @@ function vueListe(main){
   }
   trier(liste.cadeaux).forEach((c, i) => ol.append(carteCadeau(c, i, proprio ? null : zoneResa(c))));
   main.append(ol);
+}
+
+// Boîte à outils de l'admin, sur la liste de quelqu'un d'autre
+function outilsAdmin(){
+  const box = el("div", "admin-box");
+  const tete = el("div", "admin-tete");
+  tete.append(el("span", "admin-badge", "🛡️ Admin"), el("span", null, "Tu peux gérer la liste " + de(liste.prenom) + "."));
+  box.append(tete);
+  const act = el("div", "actions");
+  act.append(lien("#modifier-" + liste.id, "btn small", "✏️ Modifier cette liste"));
+  act.append(bouton("btn ghost small", "🔑 Donner un nouveau code", () => { adminAction = adminAction === "code" ? null : "code"; render(); }));
+  act.append(bouton("btn deco small", "🗑️ Supprimer cette liste", () => { adminAction = adminAction === "supprimer" ? null : "supprimer"; render(); }));
+  box.append(act);
+
+  if (adminAction === "code"){
+    const f = el("form", "admin-form"); f.noValidate = true;
+    f.append(champ("a-code", "Nouveau code pour " + liste.prenom + " (4 chiffres)", "password", {inputMode: "numeric", pattern: "[0-9]*", maxLength: 8, autocomplete: "new-password"}));
+    const a = el("div", "actions");
+    const ok = el("button", "btn small", "Enregistrer le code"); ok.type = "submit";
+    a.append(ok, bouton("btn ghost small", "Annuler", () => { adminAction = null; render(); }));
+    f.append(a);
+    f.onsubmit = async e => {
+      e.preventDefault();
+      const code = $("#a-code").value;
+      if (code.length < 4) return alerter(f, "Le code doit faire au moins 4 chiffres.");
+      ok.disabled = true;
+      try{
+        await api("listes/" + liste.id + "/code", {method: "POST", body: {motdepasse: code}, auth: true});
+        adminAction = null; render();
+        $(".admin-box").append(el("p", "aide", "C'est fait : dis à " + liste.prenom + " son nouveau code."));
+      }catch(err){ alerter(f, err.status ? err.message : "Le site n'arrive pas à joindre son serveur."); ok.disabled = false; }
+    };
+    box.append(f);
+  }
+  if (adminAction === "supprimer"){
+    const z = el("div", "admin-form");
+    z.append(el("p", "alerte", "Supprimer la liste " + de(liste.prenom) + " ? Son profil, ses cadeaux et ses réservations seront effacés pour de bon."));
+    const a = el("div", "actions");
+    const oui = bouton("btn deco small", "Oui, supprimer pour de bon", async () => {
+      oui.disabled = true;
+      try{ await api("listes/" + liste.id, {method: "DELETE", auth: true}); adminAction = null; location.hash = "accueil"; }
+      catch(err){ z.append(el("p", "alerte", err.status ? err.message : "Le site n'arrive pas à joindre son serveur.")); oui.disabled = false; }
+    });
+    a.append(oui, bouton("btn ghost small", "Annuler", () => { adminAction = null; render(); }));
+    z.append(a);
+    box.append(z);
+  }
+  return box;
 }
 
 // Les précisions "Taille 46", "Couleur noir, pointure 45"… deviennent des étiquettes ; le reste reste une phrase.
@@ -655,8 +717,10 @@ function formCompte(main, inscription){
 
 /* ---------- Ma liste : ajouter, modifier, supprimer ---------- */
 function vueMaListe(main){
-  const prenom = session.profil.prenom;
-  entete("Ma liste", "Ajoute tes idées de cadeaux. Toute la famille pourra les voir et les réserver, mais toi, tu ne verras pas ce qui est réservé.");
+  const autre = cible !== session.profil.id; // l'admin modifie la liste de quelqu'un d'autre
+  if (autre && liste) entete("Liste " + de(liste.prenom), "🛡️ Mode admin : tu modifies la liste " + de(liste.prenom) + ".");
+  else if (autre) entete("Chargement…", "");
+  else entete("Ma liste", "Ajoute tes idées de cadeaux. Toute la famille pourra les voir et les réserver, mais toi, tu ne verras pas ce qui est réservé.");
   if (chargement || !liste){ tableau([["Cadeaux", "…"], ["Total env.", "…"]]); main.append(el("p", "aide", "Chargement de ta liste…")); return; }
   const total = liste.cadeaux.reduce((s, c) => s + (+c.prix || 0), 0);
   tableau([["Cadeaux", String(liste.cadeaux.length)], ["Total env.", total ? Math.round(total).toLocaleString("fr-FR") + " €" : "—"]]);
@@ -677,7 +741,7 @@ function vueMaListe(main){
   f.append(champ("g-precisions", "Précisions (taille, couleur…)", "textarea", {maxLength: 300, placeholder: "Ex. Couleur noir, taille L", value: c ? c.precisions : ""}));
   if (erreurForm) f.append(el("p", "alerte", erreurForm));
   const act = el("div", "actions");
-  const ok = el("button", "btn", c ? "Enregistrer" : "Ajouter à ma liste"); ok.type = "submit"; act.append(ok);
+  const ok = el("button", "btn", c ? "Enregistrer" : autre ? "Ajouter à sa liste" : "Ajouter à ma liste"); ok.type = "submit"; act.append(ok);
   if (c) act.append(bouton("btn ghost", "Annuler", () => { edition = null; erreurForm = ""; render(); }));
   f.append(act);
   f.onsubmit = async e => {
@@ -699,13 +763,14 @@ function vueMaListe(main){
   // Liste des cadeaux
   const droite = el("div"); droite.style.cssText = "display:grid;gap:14px;min-width:0";
   const bar = el("div", "bar"), t = el("div");
-  t.append(el("h2", null, "Mes cadeaux"), el("p", null, msg.texte || "Du plus cher au moins cher."));
+  t.append(el("h2", null, autre ? "Ses cadeaux" : "Mes cadeaux"), el("p", null, msg.texte || "Du plus cher au moins cher."));
   bar.append(t);
   const outilsBar = el("div", "actions");
-  outilsBar.append(lien("#liste-" + session.profil.id, "btn ghost small", "Voir comme les autres"), bouton("btn deco small", "🚪 Se déconnecter", deconnecter));
+  outilsBar.append(lien("#liste-" + cible, "btn ghost small", autre ? "Revenir à sa liste" : "Voir comme les autres"));
+  if (!autre) outilsBar.append(bouton("btn deco small", "🚪 Se déconnecter", deconnecter));
   bar.append(outilsBar);
   droite.append(bar);
-  if (!liste.cadeaux.length && SEED && slug(SEED.prenom) === session.profil.id && SEED.cadeaux.length){
+  if (!autre && !liste.cadeaux.length && SEED && slug(SEED.prenom) === session.profil.id && SEED.cadeaux.length){
     const imp = el("div", "info-bandeau");
     imp.append("Tu avais déjà " + SEED.cadeaux.length + " cadeaux dans ton ancienne liste. ");
     imp.append(bouton("btn small", "Les importer", () => sauver(SEED.cadeaux.map(x => ({...x})), "Ancienne liste importée !").then(err => { if (err) render(); })));
@@ -734,7 +799,7 @@ function vueMaListe(main){
 // Enregistre toute la liste ; renvoie un message d'erreur, ou rien si c'est bon
 async function sauver(cadeaux, texte){
   try{
-    const r = await api("listes/" + session.profil.id + "/cadeaux", {method: "PUT", body: {cadeaux}, auth: true});
+    const r = await api("listes/" + cible + "/cadeaux", {method: "PUT", body: {cadeaux}, auth: true});
     liste.cadeaux = r.cadeaux; edition = null; aSupprimer = null; msg = {texte};
     render();
   }catch(e){
