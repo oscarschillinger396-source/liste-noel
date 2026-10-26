@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<title>La liste d'Oscar</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏁</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Racing+Sans+One&family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap">
+<style>
+/* Layout : une nuit de course sous la neige. Guirlande, damier rouge et blanc, panneau de chrono, puis la grille de départ (P1, P2…) classée par priorité. */
+:root{
+  --night:#0a231c;      /* fond : sapin de nuit */
+  --night-2:#123a2f;    /* halo du haut */
+  --panel:#0f2f26;      /* panneau chrono */
+  --line:#24584a;       /* filets */
+  --snow:#f7f4ee;       /* texte principal, damier */
+  --frost:#a9c7bb;      /* texte secondaire */
+  --red:#e0313f;        /* rouge Noël / drapeau */
+  --red-dark:#9b1522;   /* ombre du bouton */
+  --gold:#f2c35b;       /* or, chrono, priorités */
+  --display:"Racing Sans One", "Arial Black", Impact, sans-serif;
+  --body:"Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --label:"Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+html{background:var(--night)}
+body{margin:0;min-height:100vh;color:var(--snow);font-family:var(--body);font-size:17px;line-height:1.5;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));
+  background:var(--night) radial-gradient(120% 60% at 50% 0%, var(--night-2), var(--night) 70%) no-repeat;overflow-x:hidden}
+
+/* Guirlande */
+.lights{position:fixed;top:0;left:0;right:0;height:calc(38px + env(safe-area-inset-top, 0px));padding-top:env(safe-area-inset-top, 0px);
+  display:flex;justify-content:space-around;pointer-events:none;z-index:4}
+.lights::before{content:"";position:absolute;left:-2%;right:-2%;top:calc(env(safe-area-inset-top, 0px) + 4px);height:16px;
+  border-bottom:2px solid #1d4a3d;border-radius:0 0 50% 50%/0 0 100% 100%}
+.lights i{position:relative;top:14px;width:9px;height:14px;border-radius:45% 45% 50% 50%;background:var(--c);box-shadow:0 0 12px 3px var(--c)}
+.lights i:nth-child(4n+1){--c:#ff4655}.lights i:nth-child(4n+2){--c:#ffd062}.lights i:nth-child(4n+3){--c:#62d4ff}.lights i:nth-child(4n){--c:#7bf08a}
+@media (prefers-reduced-motion:no-preference){
+  .lights i{animation:twinkle 1.8s ease-in-out infinite alternate}
+  .lights i:nth-child(2n){animation-delay:.9s}.lights i:nth-child(3n){animation-delay:.45s}
+}
+@keyframes twinkle{to{opacity:.3;box-shadow:none}}
+
+#snow{position:fixed;inset:0;pointer-events:none;z-index:1}
+
+.wrap{position:relative;z-index:3;max-width:860px;margin:0 auto;padding-block:84px 56px;display:grid;gap:44px}
+
+/* Damier */
+.checker{height:18px;border-radius:3px;
+  background:repeating-conic-gradient(var(--snow) 0 25%, var(--red) 0 50%) 0 0/18px 18px;
+  opacity:.95}
+
+/* En-tête */
+header{display:grid;gap:22px}
+.kicker{display:flex;align-items:center;gap:12px;font-family:var(--label);font-weight:600;font-size:15px;letter-spacing:.22em;text-transform:uppercase;color:var(--gold)}
+.kicker::after{content:"";flex:1;height:1px;background:var(--line)}
+h1{margin:0;font-family:var(--display);font-weight:400;font-size:clamp(54px,13vw,112px);line-height:.92;letter-spacing:-.01em;
+  text-wrap:balance;transform:skewX(-6deg);transform-origin:left;color:var(--snow);text-shadow:4px 4px 0 var(--red)}
+h1 .tree{display:inline-block;transform:skewX(6deg);font-size:.6em;vertical-align:.18em;text-shadow:none}
+.lede{margin:0;max-width:58ch;color:var(--frost);font-size:18px}
+
+/* Panneau chrono */
+.board{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.cell{padding:16px 18px;display:grid;gap:2px;min-width:0}
+.cell + .cell{border-left:1px solid var(--line)}
+.cell .k{font-family:var(--label);font-weight:600;font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--frost)}
+.cell .v{font-family:var(--display);font-size:clamp(30px,6vw,44px);line-height:1.05;color:var(--gold);font-variant-numeric:tabular-nums;white-space:nowrap}
+.cell.go .v{color:var(--red)}
+@media (max-width:520px){
+  .board{grid-template-columns:1fr 1fr}
+  .cell.go{grid-column:1/-1;border-bottom:1px solid var(--line)}
+  .cell.go + .cell{border-left:0}
+}
+
+/* Barre de section */
+.bar{display:flex;flex-wrap:wrap;gap:12px 16px;align-items:end;justify-content:space-between}
+.bar h2{margin:0;font-family:var(--display);font-weight:400;font-size:clamp(32px,6vw,44px);line-height:1;transform:skewX(-6deg)}
+.bar p{margin:6px 0 0;color:var(--frost);font-size:15px}
+.sort{display:flex;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:4px}
+.sort button{font:600 15px var(--label);letter-spacing:.08em;text-transform:uppercase;border:0;background:transparent;color:var(--frost);
+  border-radius:999px;padding:7px 16px;cursor:pointer}
+.sort button[aria-pressed="true"]{background:var(--snow);color:var(--night)}
+
+/* Grille de départ */
+.grid{list-style:none;margin:0;padding:0;display:grid;gap:14px;counter-reset:pos}
+.slot{position:relative;display:grid;grid-template-columns:76px minmax(0,1fr) auto;align-items:center;gap:20px;
+  background:var(--snow);color:var(--night);border-radius:12px;padding:18px 20px 18px 0;overflow:hidden;
+  box-shadow:0 10px 28px rgba(0,0,0,.35)}
+.slot::before{content:"";position:absolute;inset:0 auto 0 0;width:76px;background:var(--red)}
+.pos{position:relative;display:grid;place-items:center;font-family:var(--display);font-size:34px;line-height:1;color:var(--snow);transform:skewX(-6deg)}
+.pos small{display:block;font-family:var(--label);font-size:12px;letter-spacing:.2em;transform:none;opacity:.85}
+.info{display:grid;gap:6px;min-width:0}
+.info h3{margin:0;font-family:var(--label);font-weight:700;font-size:23px;line-height:1.15;letter-spacing:.01em;overflow-wrap:anywhere}
+.specs{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font:600 13px var(--label);letter-spacing:.06em;text-transform:uppercase;padding:3px 9px;border-radius:5px;background:#e6efe9;color:#1d4a3d}
+.note{margin:0;color:#4a6158;font-size:15px;max-width:60ch}
+.prio{display:flex;align-items:center;gap:8px;font:600 13px var(--label);letter-spacing:.08em;text-transform:uppercase;color:#4a6158}
+.leds{display:flex;gap:3px}
+.leds span{width:16px;height:7px;border-radius:2px;background:#d6e0da}
+.leds span.on:nth-child(1){background:#2fa35a}.leds span.on:nth-child(2){background:#e8a623}.leds span.on:nth-child(3){background:var(--red)}
+.side{display:grid;gap:10px;justify-items:end;text-align:right}
+.price{font-family:var(--display);font-size:28px;line-height:1;font-variant-numeric:tabular-nums;white-space:nowrap}
+.price .approx{font-family:var(--label);font-size:14px;letter-spacing:.06em;color:#4a6158;margin-right:3px}
+.price.none{font-family:var(--label);font-size:15px;font-weight:600;color:#4a6158;letter-spacing:.04em}
+.go-btn{display:inline-flex;align-items:center;gap:6px;font:700 14px var(--label);letter-spacing:.1em;text-transform:uppercase;text-decoration:none;
+  background:var(--night);color:var(--snow);padding:9px 14px;border-radius:8px;white-space:nowrap}
+.go-btn:hover{background:var(--red)}
+.go-btn .host{font-weight:500;letter-spacing:.02em;text-transform:none;opacity:.7}
+a:focus-visible,button:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
+
+@media (max-width:620px){
+  .slot{grid-template-columns:56px minmax(0,1fr);padding:16px 16px 16px 0;gap:14px 16px}
+  .slot::before{width:56px}
+  .pos{font-size:28px;grid-row:span 2;align-self:stretch}
+  .side{grid-column:2;justify-items:start;text-align:left;grid-auto-flow:column;align-items:center;justify-content:space-between}
+}
+@media (prefers-reduced-motion:no-preference){
+  .slot{transition:transform .18s ease}
+  .slot:hover{transform:translateX(4px)}
+}
+
+/* Réservation */
+.resa{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding-top:6px}
+
+/* Bouton « Je l'offre » : un paquet cadeau de course, penché, avec damier et ruban doré */
+.resa-btn{position:relative;display:inline-flex;align-items:stretch;padding:0;border:0;cursor:pointer;background:none;
+  transform:skewX(-10deg);border-radius:9px;filter:drop-shadow(0 5px 0 var(--red-dark)) drop-shadow(0 10px 16px rgba(224,49,63,.35))}
+.resa-btn .flag{width:22px;border-radius:9px 0 0 9px;
+  background:repeating-conic-gradient(var(--night) 0 25%, var(--snow) 0 50%) 0 0/11px 11px}
+.resa-btn .face{position:relative;overflow:hidden;display:flex;align-items:center;gap:10px;padding:11px 20px 11px 16px;
+  border-radius:0 9px 9px 0;color:#fff;background:linear-gradient(180deg, #f2464f, var(--red) 55%, #c4202d)}
+.resa-btn .face::before{content:"";position:absolute;top:0;bottom:0;left:52px;width:10px;background:linear-gradient(90deg,#d99c2b,var(--gold),#d99c2b);opacity:.95}
+.resa-btn .face::after{content:"";position:absolute;inset:0 auto 0 -60%;width:45%;
+  background:linear-gradient(100deg, transparent, rgba(255,255,255,.55), transparent);transform:skewX(-20deg)}
+.resa-btn .gift{position:relative;z-index:1;display:grid;place-items:center;width:30px;height:30px;font-size:22px;line-height:1;transform:skewX(10deg)}
+.resa-btn .txt{position:relative;z-index:1;display:grid;text-align:left;transform:skewX(10deg);padding-left:14px}
+.resa-btn .txt b{font:400 22px/1 var(--display);letter-spacing:.01em}
+.resa-btn .txt small{font:600 12px/1.3 var(--label);letter-spacing:.18em;text-transform:uppercase;opacity:.9}
+.resa-btn:hover .face{background:linear-gradient(180deg, #ff5a62, #ea3442 55%, #cc2532)}
+.resa-btn:active{transform:skewX(-10deg) translateY(4px);filter:drop-shadow(0 1px 0 var(--red-dark)) drop-shadow(0 4px 8px rgba(224,49,63,.3))}
+.resa-btn[disabled]{cursor:progress}
+.resa-btn[disabled] .face{background:repeating-linear-gradient(-45deg, var(--red) 0 12px, #c4202d 12px 24px) 0 0/34px 34px}
+@media (prefers-reduced-motion:no-preference){
+  .resa-btn{transition:transform .15s ease, filter .15s ease}
+  .resa-btn:hover{transform:skewX(-10deg) translateY(-2px)}
+  .resa-btn:hover .face::after{animation:shine .7s ease}
+  .resa-btn:hover .gift{animation:wiggle .5s ease}
+  .resa-btn[disabled] .face{animation:stripes .6s linear infinite}
+}
+@keyframes shine{to{left:130%}}
+@keyframes wiggle{25%{transform:skewX(10deg) rotate(-12deg)}75%{transform:skewX(10deg) rotate(12deg)}}
+@keyframes stripes{to{background-position:34px 0}}
+
+/* Badge « Réservé » : panneau de stand vert */
+.resa-ok{display:inline-flex;align-items:center;gap:10px;transform:skewX(-10deg);border-radius:9px;padding:9px 18px 9px 10px;
+  background:linear-gradient(180deg,#38b866,#2a9a52);color:#fff;box-shadow:0 4px 0 #1f7a40}
+.resa-ok .check{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#fff;color:#2a9a52;font-weight:900;font-size:16px;transform:skewX(10deg)}
+.resa-ok .txt{display:grid;transform:skewX(10deg)}
+.resa-ok .txt b{font:400 20px/1 var(--display)}
+.resa-ok .txt small{font:600 12px/1.3 var(--label);letter-spacing:.16em;text-transform:uppercase;opacity:.9}
+@media (prefers-reduced-motion:no-preference){ .resa-ok.pop{animation:pop .45s cubic-bezier(.3,1.6,.5,1)} }
+@keyframes pop{from{transform:skewX(-10deg) scale(.6);opacity:0}}
+
+/* Confettis à la réservation */
+.confetti{position:absolute;left:60px;top:28px;width:8px;height:12px;border-radius:2px;pointer-events:none;z-index:5;
+  animation:boom .9s cubic-bezier(.2,.7,.4,1) forwards}
+@keyframes boom{to{transform:translate(var(--dx),var(--dy)) rotate(var(--r));opacity:0}}
+.resa-link{font:600 14px var(--label);letter-spacing:.04em;background:none;border:0;padding:4px 2px;color:#4a6158;text-decoration:underline;cursor:pointer}
+.resa-msg{font-size:14px;color:#4a6158}
+.resa-msg.err{color:#b3202d}
+.slot.taken .info h3{color:#4a6158}
+.slot.taken::after{content:"Réservé";position:absolute;right:-34px;top:16px;transform:rotate(35deg);background:#2fa35a;color:#fff;
+  font:700 12px var(--label);letter-spacing:.16em;text-transform:uppercase;padding:3px 40px}
+@media (max-width:620px){.slot.taken::after{display:none}}
+
+.empty{border:2px dashed var(--line);border-radius:12px;padding:28px;text-align:center;color:var(--frost)}
+.empty strong{display:block;color:var(--snow);font-size:19px;margin-bottom:4px}
+
+/* Arrivée */
+footer{display:grid;gap:14px;text-align:center}
+footer p{margin:0;font-family:var(--display);font-size:26px;transform:skewX(-6deg)}
+footer small{color:var(--frost);font-size:14px}
+</style>
+</head>
+<body>
+<div class="lights" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+<canvas id="snow" aria-hidden="true"></canvas>
+
+<div class="wrap">
+  <header>
+    <div class="checker" aria-hidden="true"></div>
+    <div class="kicker" id="kicker">Grand Prix de Noël</div>
+    <h1><span id="title">Ma liste de Noël</span> <span class="tree" aria-hidden="true">🎄</span></h1>
+    <p class="lede" id="message"></p>
+    <div class="board" id="board" aria-label="Résumé"></div>
+  </header>
+
+  <section style="display:grid;gap:18px">
+    <div class="bar">
+      <div>
+        <h2>Grille de départ</h2>
+        <p>Le plus important est en pole position.</p>
+      </div>
+    </div>
+    <ol class="grid" id="list"></ol>
+  </section>
+
+  <footer>
+    <div class="checker" aria-hidden="true"></div>
+    <p>Merci et joyeux Noël ! 🎅</p>
+    <small>Cliquez sur « Je l'offre » pour réserver un cadeau : les autres verront qu'il est déjà pris.</small>
+  </footer>
+</div>
+
+<script src="cadeaux.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+const data = (typeof LISTE !== "undefined" && LISTE) || null;
+let tri = "envie";
+const API = "/api/reservations";
+let resa = {}, apiOk = null, enCours = null, aConfirmer = null, msg = {}, fete = null;
+
+// Identifiant stable d'un cadeau, tiré de son nom : « Gilet protège-côtes OMP » → « gilet-protege-cotes-omp »
+function idDe(c){ return c.nom.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60); }
+
+async function chargerResa(){
+  try{
+    const r = await fetch(API, {cache: "no-store"});
+    if (!r.ok) throw 0;
+    resa = await r.json(); apiOk = true;
+  }catch{ apiOk = false; }
+  render();
+}
+
+async function changerResa(id, action){
+  enCours = id; aConfirmer = null; msg = {}; render();
+  try{
+    if (!apiOk) throw new Error("hors-ligne");
+    const r = await fetch(API, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({id, action})});
+    if (!r.ok) throw 0;
+    resa = await r.json();
+    msg = {id, texte: action === "reserver" ? "C'est noté, merci !" : "Réservation annulée."};
+    if (action === "reserver") fete = id;
+  }catch(e){
+    msg = {id, err: true, texte: e && e.message === "hors-ligne"
+      ? "La réservation marchera une fois le site en ligne sur Netlify."
+      : "Ça n'a pas marché. Vérifie ta connexion et réessaie."};
+  }
+  enCours = null; render();
+}
+
+function confettis(z){
+  const couleurs = ["#e0313f", "#f2c35b", "#2fa35a", "#62d4ff", "#ffffff"];
+  for (let i = 0; i < 18; i++){
+    const p = el("span", "confetti");
+    const a = Math.random() * Math.PI * 2, d = 50 + Math.random() * 70;
+    p.style.background = couleurs[i % couleurs.length];
+    p.style.setProperty("--dx", Math.cos(a) * d + "px");
+    p.style.setProperty("--dy", Math.sin(a) * d - 30 + "px");
+    p.style.setProperty("--r", (Math.random() * 720 - 360) + "deg");
+    z.append(p);
+    setTimeout(() => p.remove(), 1000);
+  }
+}
+
+function zoneResa(c){
+  const id = idDe(c), z = el("div", "resa");
+  if (resa[id]){
+    const ok = el("span", "resa-ok" + (fete === id ? " pop" : ""));
+    const t = el("span", "txt"); t.append(el("b", null, "Réservé"), el("small", null, "Quelqu'un l'offre"));
+    ok.append(el("span", "check", "✓"), t);
+    z.append(ok);
+    if (fete === id){ fete = null; if (!matchMedia("(prefers-reduced-motion: reduce)").matches) confettis(z); }
+    const b = el("button", "resa-link", aConfirmer === id ? "Oui, annuler la réservation" : "Annuler");
+    b.type = "button"; b.disabled = enCours === id;
+    b.onclick = () => { if (aConfirmer === id) changerResa(id, "annuler"); else { aConfirmer = id; msg = {}; render(); } };
+    z.append(b);
+  } else {
+    const b = el("button", "resa-btn");
+    const face = el("span", "face"), t = el("span", "txt");
+    t.append(el("b", null, enCours === id ? "Un instant…" : "Je l'offre"), el("small", null, enCours === id ? "Réservation en cours" : "Réserver ce cadeau"));
+    face.append(el("span", "gift", "🎁"), t);
+    b.append(el("span", "flag"), face);
+    b.type = "button"; b.disabled = enCours === id;
+    b.onclick = () => changerResa(id, "reserver");
+    z.append(b);
+  }
+  if (msg.id === id) z.append(el("span", "resa-msg" + (msg.err ? " err" : ""), msg.texte));
+  return z;
+}
+
+function euro(n){ return n.toLocaleString("fr-FR", {minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits:2}) + " €"; }
+function safeUrl(u){ try{ const x = new URL(u); return /^https?:$/.test(x.protocol) ? x : null; }catch{ return null; } }
+function el(tag, cls, text){ const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+function joursAvantNoel(){
+  const now = new Date(), today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  let xmas = new Date(now.getFullYear(), 11, 25);
+  if (today > xmas) xmas = new Date(now.getFullYear() + 1, 11, 25);
+  return { jours: Math.round((xmas - today) / 864e5), annee: xmas.getFullYear() };
+}
+
+// Les précisions "Taille 46", "Couleur noir, pointure 45"… deviennent des étiquettes ; le reste reste une phrase.
+function decouper(precisions){
+  const chips = [], phrases = [];
+  for (const part of (precisions || "").split(/,\s*/)){
+    const p = part.trim(); if (!p) continue;
+    if (/^(taille|pointure|couleur)\b/i.test(p) && p.length < 28) chips.push(p);
+    else phrases.push(p);
+  }
+  return { chips, note: phrases.join(", ") };
+}
+
+function cellule(cle, valeur, cls){
+  const c = el("div", "cell" + (cls ? " " + cls : ""));
+  c.append(el("span", "k", cle), el("span", "v", valeur));
+  return c;
+}
+
+function render(){
+  const list = $("#list");
+  list.innerHTML = "";
+
+  if (!data){
+    const li = el("li", "empty");
+    li.append(el("strong", null, "La liste ne s'est pas chargée"), "Il manque sûrement un guillemet ou une virgule dans le fichier cadeaux.js.");
+    list.append(li); return;
+  }
+
+  const cadeaux = (data.cadeaux || []).filter(c => c && c.nom);
+  const tries = [...cadeaux].sort(tri === "prix"
+    ? (a, b) => (b.prix ?? -1) - (a.prix ?? -1)
+    : (a, b) => (b.envie || 2) - (a.envie || 2) || (b.prix || 0) - (a.prix || 0));
+
+  if (!tries.length){
+    const li = el("li", "empty");
+    li.append(el("strong", null, "Pas encore d'idées"), "Repasse bientôt !");
+    list.append(li); return;
+  }
+
+  tries.forEach((c, i) => {
+    const li = el("li", "slot");
+
+    const pos = el("div", "pos");
+    pos.append(el("small", null, "Pos."), "P" + (i + 1));
+    li.append(pos);
+
+    const info = el("div", "info");
+    info.append(el("h3", null, c.nom));
+    const { chips, note } = decouper(c.precisions);
+    if (chips.length){ const s = el("div", "specs"); chips.forEach(t => s.append(el("span", "chip", t))); info.append(s); }
+    if (note) info.append(el("p", "note", note));
+    info.append(zoneResa(c));
+    if (resa[idDe(c)]) li.classList.add("taken");
+    li.append(info);
+
+    const side = el("div", "side");
+    if (+c.prix){
+      const p = el("div", "price");
+      if (c.prixEstime) p.append(el("span", "approx", "env."));
+      p.append(euro(+c.prix));
+      side.append(p);
+    } else side.append(el("div", "price none", "Prix à voir"));
+    const u = c.lien && safeUrl(c.lien);
+    if (u){
+      const a = el("a", "go-btn"); a.href = u.href; a.target = "_blank"; a.rel = "noopener noreferrer";
+      a.append("Voir ", el("span", "host", u.hostname.replace(/^www\./, "")), " ↗");
+      side.append(a);
+    }
+    li.append(side);
+    list.append(li);
+  });
+}
+
+function neige(){
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const cv = $("#snow"), ctx = cv.getContext("2d");
+  let w, h, flocons = [];
+  function taille(){
+    w = cv.width = innerWidth; h = cv.height = innerHeight;
+    const n = Math.round(Math.min(140, w * h / 8000));
+    flocons = Array.from({length:n}, () => ({x:Math.random()*w, y:Math.random()*h, r:.8+Math.random()*2.6, v:.35+Math.random()*1.1, d:Math.random()*6.3}));
+  }
+  function frame(){
+    ctx.clearRect(0, 0, w, h);
+    for (const f of flocons){
+      f.y += f.v; f.d += .012; f.x += Math.sin(f.d) * .45;
+      if (f.y > h + 5){ f.y = -5; f.x = Math.random() * w; }
+      ctx.fillStyle = "rgba(247,244,238," + (.35 + f.r / 5) + ")";
+      ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, 6.2832); ctx.fill();
+    }
+    requestAnimationFrame(frame);
+  }
+  addEventListener("resize", taille);
+  taille(); frame();
+}
+
+function init(){
+  const { jours, annee } = joursAvantNoel();
+  $("#kicker").textContent = "Grand Prix de Noël " + annee;
+  const board = $("#board");
+  board.append(cellule("Départ dans", jours === 0 ? "C'est Noël !" : "J-" + jours, "go"));
+  if (data){
+    const nom = data.prenom ? "La liste " + (/^[aeiouyhéèêàâîôû]/i.test(data.prenom) ? "d'" : "de ") + data.prenom : "Ma liste de Noël";
+    $("#title").textContent = nom;
+    document.title = nom;
+    $("#message").textContent = data.message || "";
+    const cadeaux = (data.cadeaux || []).filter(c => c && c.nom);
+    const total = cadeaux.reduce((s, c) => s + (+c.prix || 0), 0);
+    board.append(cellule("Cadeaux", String(cadeaux.length)));
+    board.append(cellule("Total env.", total ? Math.round(total).toLocaleString("fr-FR") + " €" : "—"));
+  }
+  document.querySelectorAll(".sort button").forEach(b => b.onclick = () => {
+    tri = b.dataset.sort;
+    document.querySelectorAll(".sort button").forEach(x => x.setAttribute("aria-pressed", x === b));
+    render();
+  });
+  render();
+  chargerResa();
+  setInterval(() => { if (apiOk && !enCours) chargerResa(); }, 30000);
+  neige();
+}
+init();
+</script>
+</body>
+</html>
