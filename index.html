@@ -879,6 +879,9 @@ async function remplirDepuisLien(){
   catch(e){ info.textContent = e.status ? e.message : "Le site n'arrive pas à lire ce lien. Remplis les cases à la main."; return; }
   if ($("#g-lien") !== champ || champ.value.trim() !== lienP) return; // le formulaire a changé entre-temps
   const trouve = [];
+  // « GILET OMP Karting : Gilets protège-côtes » → « GILET OMP Karting » ; « l » → « L »
+  if (r.nom) r.nom = r.nom.split(/\s[:|]\s/)[0].trim();
+  if (r.taille && /^[a-z]{1,4}$/i.test(r.taille)) r.taille = r.taille.toUpperCase();
   if (r.nom && !$("#g-nom").value.trim()){ $("#g-nom").value = r.nom; trouve.push("le nom"); }
   if (r.prix && !$("#g-prix").value){ $("#g-prix").value = r.prix; $("#g-estime").checked = false; trouve.push("le prix"); }
   const prec = $("#g-precisions"), ajouts = [];
