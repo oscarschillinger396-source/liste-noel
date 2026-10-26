@@ -3,12 +3,18 @@
 
 // Le serveur du site : les profils (prénom + code), les listes de chacun et les réservations.
 // Le serveur du site : les profils (prénom + code), les listes de chacun et les réservations.
+// Le serveur du site : les profils (prénom + code), les listes de chacun, leurs thèmes et les réservations.
 import { getStore } from "@netlify/blobs";
 import { scryptSync, randomBytes, timingSafeEqual, createHmac } from "node:crypto";
 
 // Les profils admin peuvent modifier ou supprimer toutes les listes, et donner un nouveau code
 const ADMINS = ["oscar"];
 const MAX_PROFILS = 30;
+// Les thèmes qu'on peut choisir pour sa liste : le fond de la page, et le style des cartes
+const FONDS = ["sapin", "polaire", "bordeaux", "chocolat", "galaxie"];
+const STYLES_LISTE = ["course", "dore", "sucre", "glace", "foret"];
+const themeDe = p => ({ fond: FONDS.includes(p?.theme?.fond) ? p.theme.fond : "sapin",
+  liste: STYLES_LISTE.includes(p?.theme?.liste) ? p.theme.liste : "course" });
 const MAX_CADEAUX = 60;
 const DUREE_SESSION = 60 * 24 * 3600 * 1000;
 
@@ -105,7 +111,7 @@ export default async (req) => {
       if (!ok){ await new Promise(r => setTimeout(r, 800)); return erreur("Ce n'est pas le bon code. Réessaie.", 401); }
     }
     const token = signer(await secret(s), { id, exp: Date.now() + DUREE_SESSION });
-    return json({ token, profil: { id, prenom: profils[id].prenom, admin: ADMINS.includes(id) } });
+    return json({ token, profil: { id, prenom: profils[id].prenom, admin: ADMINS.includes(id), theme: themeDe(profils[id]) } });
   }
 
   if (chemin[0] !== "listes") return erreur("Adresse inconnue", 404);
@@ -113,7 +119,7 @@ export default async (req) => {
   if (req.method === "GET" && chemin.length === 1){
     const listes = await Promise.all(Object.entries(profils).map(async ([id, p]) => {
       const cadeaux = (await s.get("liste-" + id, { type: "json" })) || [];
-      return { id, prenom: p.prenom, nb: cadeaux.length };
+      return { id, prenom: p.prenom, nb: cadeaux.length, theme: themeDe(p) };
     }));
     return json(listes.sort((a, b) => a.prenom.localeCompare(b.prenom, "fr")));
   }
@@ -147,7 +153,14 @@ export default async (req) => {
   if (req.method === "GET" && chemin.length === 2){
     const cadeaux = (await s.get("liste-" + id, { type: "json" })) || [];
     const resa = proprietaire ? null : ((await s.get("resa-" + id, { type: "json" })) || {});
-    return json({ id, prenom: profils[id].prenom, cadeaux, reservations: resa });
+    return json({ id, prenom: profils[id].prenom, theme: themeDe(profils[id]), cadeaux, reservations: resa });
+  }
+
+  if (req.method === "PUT" && chemin[2] === "theme"){
+    if (!proprietaire && !admin) return erreur("Connecte-toi pour changer le thème de ta liste.", 401);
+    profils[id] = { ...profils[id], theme: themeDe({ theme: body }) };
+    await s.setJSON("profils", profils);
+    return json({ theme: profils[id].theme });
   }
 
   if (req.method === "PUT" && chemin[2] === "cadeaux"){
