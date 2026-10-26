@@ -225,6 +225,12 @@ footer small{color:var(--frost);font-size:14px}
 .choix-d{font-size:16px;color:#3c524a}
 @media (prefers-reduced-motion:no-preference){ .choix-carte{transition:transform .15s ease} .choix-carte:hover{transform:translateY(-3px)} }
 
+/* Connexion : on touche son prénom */
+.noms{display:flex;flex-wrap:wrap;gap:10px}
+.nom-btn{font-family:var(--display);font-size:24px;cursor:pointer;border:0;border-radius:10px;padding:10px 18px;
+  background:var(--snow);color:var(--night);transform:skewX(-6deg)}
+.nom-btn[aria-pressed="true"]{background:var(--gold);box-shadow:0 0 0 3px var(--snow)}
+
 /* Formulaires */
 .carte{display:grid;gap:16px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;max-width:560px;width:100%}
 .carte h2{margin:0;font-family:var(--display);font-weight:400;font-size:32px;transform:skewX(-6deg)}
@@ -350,7 +356,7 @@ async function aller(){
   if (vue !== "ma-liste") edition = null;
   chargement = true; render();
   try{
-    if (vue === "accueil"){ listes = await api("listes"); enLigne = true; }
+    if (vue === "accueil" || vue === "connexion"){ listes = await api("listes"); enLigne = true; }
     if (vue === "liste"){
       if (vueId === "demo") liste = demo();
       else { liste = await api("listes/" + vueId); enLigne = true; }
@@ -594,15 +600,32 @@ function vueConnexion(main){ formCompte(main, false); }
 function vueInscription(main){ formCompte(main, true); }
 function formCompte(main, inscription){
   entete(inscription ? "Créer ma liste" : "Se connecter", inscription
-    ? "Choisis ton prénom et un mot de passe. Ensuite, tu pourras ajouter tes idées de cadeaux."
-    : "Connecte-toi pour modifier ta liste. Pour regarder les listes des autres, pas besoin de compte.");
+    ? "Écris ton prénom et choisis un code secret de 4 chiffres. Ensuite, tu pourras ajouter tes idées de cadeaux."
+    : "Choisis ton prénom et tape ton code secret. Pour regarder les listes des autres, pas besoin de code.");
   tableau([]);
   main.append(lien("#accueil", "retour", "← Toutes les listes"));
   const f = el("form", "carte"); f.noValidate = true;
-  f.append(el("h2", null, inscription ? "Nouveau profil" : "Connexion"));
-  f.append(champ("f-prenom", "Prénom", "text", {autocomplete: "username", required: true, maxLength: 30}));
-  f.append(champ("f-mdp", "Mot de passe (6 caractères minimum)", "password", {autocomplete: inscription ? "new-password" : "current-password", required: true}));
-  if (inscription) f.append(champ("f-mdp2", "Retape le mot de passe", "password", {autocomplete: "new-password", required: true}));
+  f.append(el("h2", null, inscription ? "Nouveau profil" : "Qui es-tu ?"));
+  const code = {type: "password", inputMode: "numeric", pattern: "[0-9]*", maxLength: 8, required: true};
+  if (!inscription && listes.length){
+    // Connexion : on touche son prénom au lieu de l'écrire
+    const champPrenom = el("input"); champPrenom.type = "hidden"; champPrenom.id = "f-prenom";
+    const noms = el("div", "noms"); noms.setAttribute("role", "group"); noms.setAttribute("aria-label", "Ton prénom");
+    listes.forEach(l => {
+      const b = bouton("nom-btn", l.prenom, () => {
+        champPrenom.value = l.prenom;
+        noms.querySelectorAll(".nom-btn").forEach(x => x.setAttribute("aria-pressed", x === b));
+        $("#f-mdp").focus();
+      });
+      b.setAttribute("aria-pressed", "false");
+      noms.append(b);
+    });
+    f.append(champPrenom, noms);
+  } else {
+    f.append(champ("f-prenom", "Prénom", "text", {autocomplete: "username", required: true, maxLength: 30}));
+  }
+  f.append(champ("f-mdp", inscription ? "Choisis ton code secret (4 chiffres)" : "Ton code secret", "password", {...code, autocomplete: inscription ? "new-password" : "current-password"}));
+  if (inscription) f.append(champ("f-mdp2", "Retape ton code", "password", {...code, autocomplete: "new-password"}));
   if (enLigne === false) f.append(el("p", "info-bandeau", "Les profils marcheront une fois le site en ligne sur Netlify."));
   const act = el("div", "actions");
   const ok = el("button", "btn", inscription ? "Créer mon profil" : "Me connecter"); ok.type = "submit";
@@ -610,14 +633,14 @@ function formCompte(main, inscription){
   const aide = el("p", "aide");
   if (inscription){ aide.append("Tu as déjà un profil ? "); aide.append(lien("#connexion", null, "Connecte-toi")); }
   else { aide.append("Pas encore de liste ? "); aide.append(lien("#inscription", null, "Crée ton profil")); }
-  aide.append(". Retiens bien ton mot de passe : il ne peut pas être récupéré.");
+  aide.append(". Retiens bien ton code : il ne peut pas être récupéré.");
   f.append(aide);
   f.onsubmit = async e => {
     e.preventDefault();
     const prenom = $("#f-prenom").value.trim(), motdepasse = $("#f-mdp").value;
-    if (!prenom) return alerter(f, "Écris ton prénom.");
-    if (motdepasse.length < 6) return alerter(f, "Le mot de passe doit faire au moins 6 caractères.");
-    if (inscription && motdepasse !== $("#f-mdp2").value) return alerter(f, "Les deux mots de passe ne sont pas pareils.");
+    if (!prenom) return alerter(f, inscription ? "Écris ton prénom." : "Touche ton prénom.");
+    if (motdepasse.length < 4) return alerter(f, "Le code doit faire au moins 4 chiffres.");
+    if (inscription && motdepasse !== $("#f-mdp2").value) return alerter(f, "Les deux codes ne sont pas pareils.");
     alerter(f, ""); ok.disabled = true; ok.textContent = "Un instant…";
     try{
       const r = await api(inscription ? "inscription" : "connexion", {method: "POST", body: {prenom, motdepasse}});
