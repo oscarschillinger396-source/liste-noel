@@ -261,6 +261,7 @@ footer small{color:var(--frost);font-size:14px}
 .rang-lien{display:flex;gap:8px;align-items:stretch}
 .rang-lien input{flex:1;min-width:0}
 .rang-lien .effacer-lien{flex:none;text-transform:none;letter-spacing:.02em}
+.rang-lien .coller-btn{flex:none;font-size:15px;padding:9px 14px}
 .copier-btn{font:700 13px var(--label);letter-spacing:.08em;text-transform:uppercase;cursor:pointer;border:0;border-radius:8px;padding:7px 12px;
   background:#e6efe9;color:#1d4a3d;white-space:nowrap}
 .copier-btn:hover{background:#d3e4da}
@@ -330,7 +331,6 @@ let session = lireSession();      // { token, profil: { id, prenom } } quand on 
 let invite = lireInvite();        // true quand on a choisi « Mode invité »
 let vueApres = null;              // la liste demandée avant l'écran d'entrée (lien partagé)
 let cible = null;                 // la liste qu'on modifie : la sienne, ou celle d'un autre pour l'admin
-let ajoutEnAttente = null;        // un cadeau envoyé par le bouton magique, à mettre dans le formulaire
 let adminAction = null;           // "code" ou "supprimer" : l'outil admin ouvert sur une liste
 // Les admins peuvent modifier et supprimer toutes les listes (le serveur vérifie aussi)
 const ADMINS = ["oscar"];
@@ -404,14 +404,6 @@ async function aller(){
   else if (h.startsWith("modifier-") && estAdmin()){ vue = "ma-liste"; cible = h.slice(9); }
   else if (["connexion", "inscription", "ma-liste"].includes(h)){ vue = h; if (h === "ma-liste" && session) cible = session.profil.id; }
   else if (h === "invite"){ choisirInvite(true); location.hash = "accueil"; return; }
-  else if (h.startsWith("ajout")){
-    // On arrive du bouton magique : on garde les infos, puis on va dans « Ma liste » (après connexion si besoin)
-    const infos = Object.fromEntries(new URLSearchParams(h.slice(h.indexOf("?") + 1)));
-    try{ localStorage.setItem("ajout", JSON.stringify(infos)); }catch{}
-    ajoutEnAttente = infos;
-    location.hash = session ? "ma-liste" : "connexion";
-    return;
-  }
   else { vue = "accueil"; }
   // Pas connecté et pas encore entré en invité : on montre d'abord l'écran d'entrée
   if (!session && !invite && (vue === "accueil" || vue === "liste")){ vueApres = vue === "liste" ? h : null; vue = "bienvenue"; }
@@ -825,7 +817,6 @@ function vueMaListe(main){
   const total = liste.cadeaux.reduce((s, c) => s + (+c.prix || 0), 0);
   tableau([["Cadeaux", String(liste.cadeaux.length)], ["Total env.", total ? Math.round(total).toLocaleString("fr-FR") + " €" : "—"]]);
 
-  if (!autre) main.append(carteBoutonMagique());
   main.append(choixThemes(autre));
 
   const deux = el("div", "deux");
@@ -836,36 +827,41 @@ function vueMaListe(main){
   f.append(champ("g-nom", "Cadeau", "text", {required: true, maxLength: 120, placeholder: "Ex. Combinaison de karting", value: c ? c.nom : ""}));
   const ligne = el("div", "ligne");
   // Un champ texte simple (pas « url ») : coller, effacer et recoller un lien marche partout, même sur téléphone
-  const blocLien = champ("g-lien", "Lien du produit", "text", {placeholder: "https://…", inputMode: "url", autocomplete: "off", spellcheck: false, value: c ? c.lien : ""});
-  const effacer = bouton("btn ghost small effacer-lien", "✕ Effacer", () => {
+  const blocLien = champ("g-lien", "Lien du produit (ou toute la page copiée)", "text", {placeholder: "Colle ici…", inputMode: "url", autocomplete: "off", spellcheck: false, value: c ? c.lien : ""});
+  const effacer = bouton("btn ghost small effacer-lien", "✕", () => {
     champLien.value = ""; dernierLienLu = ""; champLien.focus();
     $("#g-info-lien").textContent = "Lien effacé. Colle un autre lien, ou laisse vide.";
   });
-  effacer.title = "Effacer le lien";
-  const rangLien = el("div", "rang-lien"); rangLien.append(blocLien.querySelector("input"), effacer);
+  effacer.title = "Effacer le lien"; effacer.setAttribute("aria-label", "Effacer le lien");
+  // Gros bouton « Coller » : un seul geste, sur téléphone comme sur ordinateur
+  const coller = bouton("btn small coller-btn", "📋 Coller", async () => {
+    try{
+      const t = await navigator.clipboard.readText();
+      if (!t.trim()) throw 0;
+      recevoirCollage(t);
+    }catch{
+      champLien.focus();
+      $("#g-info-lien").textContent = "Ton navigateur ne me laisse pas lire ce que tu as copié : appuie longuement dans la case (ou Ctrl + V), puis « Coller ».";
+    }
+  });
+  const rangLien = el("div", "rang-lien"); rangLien.append(blocLien.querySelector("input"), coller, effacer);
   blocLien.append(rangLien);
-  // Le bouton magique, juste à côté du lien : à glisser dans la barre des favoris
-  const magique = el("a", "btn small magique-btn", "🎁 Bouton magique");
-  magique.href = lienBoutonMagique();
-  magique.title = "Glisse-moi dans ta barre des favoris";
-  magique.onclick = e => {
-    e.preventDefault();
-    $("#g-info-lien").textContent = "⚡ Ce bouton ne se clique pas ici : glisse-le dans ta barre des favoris (Ctrl + Maj + B pour l'afficher). Ensuite, sur la page d'un produit, choisis ta taille et ta couleur, puis clique sur le favori : tout se remplit ici, prix compris.";
-  };
-  const rangMagique = el("div", "rang-magique");
-  rangMagique.append(magique, el("span", null, "← glisse-le dans tes favoris pour tout remplir depuis la page du produit, prix compris"));
-  blocLien.append(rangMagique);
   blocLien.style.gridColumn = "1 / -1"; // le lien prend toute la largeur, le prix passe en dessous
   ligne.append(blocLien);
   ligne.append(champ("g-prix", "Prix (€)", "text", {inputMode: "decimal", placeholder: "Ex. 49,99", value: c && c.prix != null ? String(c.prix).replace(".", ",") : ""}));
   f.append(ligne);
   const infoLien = el("p", "aide"); infoLien.id = "g-info-lien";
-  infoLien.textContent = c ? "" : "Colle le lien du produit : le prix, la taille et la couleur se remplissent tout seuls quand c'est possible.";
+  infoLien.textContent = c ? "" : "Colle le lien du produit. Si le prix ne vient pas : sur la page du produit, fais « Tout sélectionner » puis « Copier », et recolle ici.";
   f.append(infoLien);
   const champLien = blocLien.querySelector("#g-lien");
   autoRempli = {}; dernierLienLu = c ? (c.lien || "") : "";
   champLien.addEventListener("change", () => remplirDepuisLien());
-  champLien.addEventListener("paste", () => setTimeout(remplirDepuisLien, 0));
+  champLien.addEventListener("paste", e => {
+    const t = e.clipboardData && e.clipboardData.getData("text");
+    // Une page entière collée (pas juste un lien) : on la lit au lieu de la mettre dans la case
+    if (t && !estUnLien(t)){ e.preventDefault(); recevoirCollage(t); return; }
+    setTimeout(remplirDepuisLien, 0);
+  });
   champLien.addEventListener("input", () => { if (!champLien.value.trim()) dernierLienLu = ""; });
   const coche = el("label", "coche"); coche.htmlFor = "g-estime";
   const cb = el("input"); cb.type = "checkbox"; cb.id = "g-estime"; cb.checked = !!(c && c.prixEstime);
@@ -930,56 +926,8 @@ function vueMaListe(main){
   droite.append(ol);
   deux.append(droite);
   main.append(deux);
-  if (!autre && !c) remplirDepuisBoutonMagique();
 }
 
-// Le cadre qui explique comment installer le bouton magique
-function carteBoutonMagique(){
-  const d = el("details", "carte magique");
-  d.style.maxWidth = "none";
-  const s = el("summary"); s.append(el("span", "magique-titre", "⚡ Ajoute un cadeau en 1 clic depuis n'importe quel site"));
-  d.append(s);
-  const etapes = el("ol", "magique-etapes");
-  const e1 = el("li"); e1.append("Sur ordinateur, affiche la barre des favoris : ", el("b", null, "Ctrl + Maj + B"), ".");
-  const e2 = el("li"); e2.append("Glisse ce bouton dans la barre des favoris (ne clique pas dessus ici) : ");
-  const a = el("a", "btn magique-btn", "🎁 Ajouter à ma liste");
-  a.href = lienBoutonMagique();
-  a.onclick = e => { e.preventDefault(); alerteMagique.hidden = false; };
-  e2.append(a);
-  const e3 = el("li"); e3.append("Sur n'importe quel site (Amazon, Zara, Decathlon…), ouvre un produit, ", el("b", null, "choisis ta taille et ta couleur"), ", puis clique sur le favori ", el("b", null, "🎁 Ajouter à ma liste"), ".");
-  const e4 = el("li"); e4.append("Ta liste s'ouvre avec le nom, le prix, la taille et la couleur déjà remplis. Tu vérifies, et c'est ajouté !");
-  etapes.append(e1, e2, e3, e4);
-  const alerteMagique = el("p", "alerte", "Ce bouton ne marche pas ici : glisse-le dans ta barre des favoris, puis utilise-le sur la page d'un produit.");
-  alerteMagique.hidden = true;
-  d.append(etapes, alerteMagique, el("p", "aide", "Sur téléphone, les favoris de ce genre sont compliqués : colle plutôt le lien du produit dans le formulaire."));
-  return d;
-}
-
-// Met dans le formulaire le cadeau envoyé par le bouton magique
-function remplirDepuisBoutonMagique(){
-  let infos = ajoutEnAttente;
-  if (!infos){ try{ infos = JSON.parse(localStorage.getItem("ajout")); }catch{} }
-  if (!infos || !$("#g-nom")) return;
-  ajoutEnAttente = null;
-  try{ localStorage.removeItem("ajout"); }catch{}
-  // Si la page n'a pas donné la couleur, l'adresse la contient parfois (« …/noir_et_argent-sneakers… »)
-  const adresse = lireAdresse(infos.lien);
-  if (!infos.couleur) infos.couleur = adresse.couleur || "";
-  if (!infos.taille) infos.taille = adresse.taille || "";
-  if (infos.nom) mettreAuto("g-nom", nomEssentiel(infos.nom));
-  if (infos.lien && safeUrl(infos.lien)){ $("#g-lien").value = infos.lien; dernierLienLu = infos.lien; }
-  const prix = lirePrix(infos.prix);
-  if (prix) mettreAuto("g-prix", String(prix));
-  const prec = [];
-  if (infos.taille) prec.push("Taille " + (/^[a-z]{1,4}$/i.test(infos.taille) ? infos.taille.toUpperCase() : infos.taille));
-  if (infos.couleur) prec.push("Couleur " + infos.couleur);
-  if (prec.length) mettreAuto("g-precisions", prec.join(", "));
-  const manque = [!prix && "le prix", !infos.taille && "la taille", !infos.couleur && "la couleur"].filter(Boolean);
-  $("#g-info-lien").textContent = "⚡ Infos récupérées depuis la page du produit. "
-    + (manque.length ? "Il manque " + manque.join(", ").replace(/, ([^,]*)$/, " et $1") + " : complète si besoin, puis " : "Vérifie, puis ")
-    + "clique sur « Ajouter à ma liste ».";
-  $("#g-nom").scrollIntoView({block: "center"});
-}
 // Enlève les morceaux de suivi des liens (« ?ref=…&utm_… ») pour garder une adresse courte qui marche
 function nettoyerLien(lien){
   const u = safeUrl(lien); if (!u) return lien;
@@ -1034,123 +982,81 @@ function nomUtile(nom, lien){
   return nom;
 }
 
-/* ---------- Le bouton magique ----------
-   Un favori à mettre dans la barre du navigateur. Sur la page d'un produit (n'importe quel site),
-   on clique dessus : il lit la page affichée dans TON navigateur (nom, prix, taille et couleur choisies)
-   et ouvre « Ma liste » avec tout déjà rempli. Cette fonction est copiée telle quelle dans le favori :
-   elle ne doit rien utiliser d'autre que ce qu'elle contient. */
-function boutonMagique(APP, lire){
-  const d = document, tous = s => [...d.querySelectorAll(s)];
-  const texte = e => (e ? (e.getAttribute("content") || e.getAttribute("aria-label") || e.getAttribute("title") || e.value || e.textContent || "") : "").replace(/\s+/g, " ").trim();
-  let nom = "", prix = "", couleur = "", taille = "";
+/* ---------- Coller toute la page d'un produit ----------
+   Sur la page du produit : « Tout sélectionner » puis « Copier ». On colle ici, et on lit le texte
+   comme une personne : le prix en €, le nom juste au-dessus, « Couleur : … », « Taille : … ». */
+function estUnLien(t){ const s = t.trim(); return !/\s/.test(s) && /^(https?:\/\/|www\.)/i.test(s); }
 
-  // 1. Les données « produit » que les boutiques mettent pour Google
-  const parcours = o => {
-    if (!o || typeof o !== "object") return;
-    if (Array.isArray(o)) return o.forEach(parcours);
-    if (/Product/i.test([].concat(o["@type"] || []).join(" "))){
-      nom = nom || o.name || "";
-      couleur = couleur || (typeof o.color === "string" ? o.color : "");
-      // (pas la taille d'ici : ces données listent souvent toutes les tailles du produit, pas celle choisie)
-      const off = [].concat(o.offers || [])[0];
-      if (off){ const p = off.price || off.lowPrice || (off.priceSpecification || {}).price; if (p && !prix) prix = String(p); }
+function lireTextePage(texte){
+  const lignes = texte.replace(/ /g, " ").split(/\r?\n/).map(l => l.replace(/\s+/g, " ").trim()).filter(Boolean);
+  const r = {};
+  // Un lien dans le texte collé (certains navigateurs l'ajoutent)
+  const lien = texte.match(/https?:\/\/[^\s"<>]+/);
+  if (lien) r.lien = lien[0];
+  // Les prix : « 49,99 € », « 49 € », « € 49.99 », « 1 299,99 € »… sauf livraison, mensualités, anciens prix
+  const pasUnPrix = /livraison|offert|dès |à partir|économi|au lieu|avant|barré|ancien|\/ ?mois|par mois|mois|x ?\d|crédit|financ|retrait|frais|remise|réduction|-\s?\d+ ?%|éco-?part|ecopart|reprise|carte cadeau|code|cashback|rembours|soit |prix public|pvc|ppc|jusqu/i;
+  const motif = /(?:€\s?(\d{1,4}(?:[ .]\d{3})*(?:[,.]\d{1,2})?)(?![\d,.]))|(?:(?<![\d,.])(\d{1,4}(?:[ .]\d{3})*(?:[,.]\d{1,2})?)\s?(?:€|EUR\b))/gi;
+  const candidats = [];
+  lignes.forEach((l, i) => {
+    if (l.length > 140 || pasUnPrix.test(l)) return;
+    for (const m of l.matchAll(motif)){
+      const v = lirePrix(m[1] || m[2]);
+      if (v && v < 100000) candidats.push({ v, i });
     }
-    Object.values(o).forEach(parcours);
-  };
-  tous('script[type="application/ld+json"]').forEach(s => { try{ parcours(JSON.parse(s.textContent)); }catch(e){} });
-
-  // 2. Les balises meta, puis le prix affiché sur la page
-  const meta = n => texte(d.querySelector('meta[property="' + n + '"],meta[name="' + n + '"]'));
-  nom = nom || meta("og:title") || texte(d.querySelector("h1")) || d.title;
-  // Le prix, en essayant de plus en plus de cachettes, de la plus sûre à la moins sûre
-  const twitter = meta("twitter:data1");
-  prix = prix || meta("product:price:amount") || meta("og:price:amount") || (/€|EUR/i.test(twitter) ? twitter.replace(/[^\d,.\s]/g, "") : "")
-    || texte(d.querySelector('[itemprop="price"]'));
-  // Attributs que posent beaucoup de boutiques (Magento, PrestaShop, WooCommerce…)
-  if (!prix){
-    const a = d.querySelector("[data-price-amount],[data-price],[data-product-price],[data-final-price]");
-    if (a) prix = a.getAttribute("data-price-amount") || a.getAttribute("data-price") || a.getAttribute("data-product-price") || a.getAttribute("data-final-price") || "";
-    if (prix && !/\d/.test(prix)) prix = "";
-  }
-  // Boutiques Shopify : le prix est rangé dans la page, en centimes
-  if (!prix){
-    try{ const v = window.ShopifyAnalytics.meta.product.variants[0].price; if (v) prix = String(v / 100); }catch(e){}
-  }
-  // Amazon
-  if (!prix){
-    const e = d.querySelector("#corePrice_feature_div .a-offscreen, #corePriceDisplay_desktop_feature_div .a-offscreen, .a-price .a-offscreen");
-    if (e) prix = e.textContent;
-  }
-  // Le prix affiché à l'écran, sous le titre du produit (en ignorant les anciens prix barrés).
-  // Marche aussi quand les centimes sont à part : « 44<sup>,99</sup> € »
-  if (!prix){
-    const barre = x => x.closest("del,s,strike,[class*='old' i],[class*='was' i],[class*='barr' i],[class*='strike' i],[class*='crossed' i],[class*='before' i],[class*='regular' i],[class*='compare' i]");
-    const titre = d.querySelector("h1");
-    const motif = /^(?:€|EUR)?\s*(\d{1,5}(?:[ .]\d{3})*(?:[,.]\d{1,2})?)\s*(?:€|EUR|TTC|\s)*$/i;
-    let trouve = null;
-    for (const x of tous("body *")){
-      if (!x.offsetParent || /^(SCRIPT|STYLE|OPTION|SELECT|INPUT|BUTTON|A|NAV|HEADER|FOOTER)$/.test(x.tagName) || barre(x)) continue;
-      if (titre && (titre.compareDocumentPosition(x) & 2)) continue; // avant le titre : menus, bandeaux…
-      let t = (x.innerText || "").replace(/ /g, " ").replace(/\s*([,.])\s*/g, "$1").replace(/\s+/g, " ").trim();
-      if (!t || t.length > 22 || !/€|EUR/i.test(t)) continue;
-      const sup = x.querySelector("sup");
-      if (sup && !/[,.]/.test(t)){ const c = sup.textContent.trim(); t = t.replace(c, "," + c); }
-      const m = t.match(motif);
-      if (!m) continue;
-      const p = { valeur: m[1], prixDansClasse: /price|prix|amount|montant/i.test(String(x.className && x.className.baseVal !== undefined ? x.className.baseVal : x.className) + " " + (x.id || "")) };
-      if (!trouve || (p.prixDansClasse && !trouve.prixDansClasse)) trouve = p;
-      if (trouve.prixDansClasse) break;
+  });
+  if (candidats.length){
+    // Le premier prix de la page (hors livraison, mensualités…) est celui du produit
+    const premier = candidats[0];
+    r.prix = premier.v;
+    // Le nom : au-dessus du prix, la ligne qui ressemble le plus à un nom de produit (la plus longue « courte » ligne)
+    const pasUnNom = /€|:|accueil|menu|panier|connexion|compte|recherch|livraison|retour|avis|étoile|note|réf|référence|vendu|stock|disponib|quantité|ajouter|acheter|partager|favori|taille|couleur|guide|promo|nouveau|soldes|cookies|prix|accéder|aller au|contenu|pied de page|afficher|magasin|fermer|voir |plus de|découvr|inscri|newsletter|\{\{|^\d|^id /i;
+    let meilleurNom = "";
+    for (let i = premier.i - 1; i >= Math.max(0, premier.i - 30); i--){
+      const l = lignes[i], mots = l.split(" ").length;
+      if (l.length >= 6 && l.length <= 110 && mots >= 2 && mots <= 16 && /[a-zà-ÿ]{3,}/i.test(l) && !/[.!?]$/.test(l) && !pasUnNom.test(l) && l.length > meilleurNom.length) meilleurNom = l;
     }
-    if (trouve) prix = trouve.valeur;
+    if (meilleurNom) r.nom = meilleurNom;
   }
-  // Ancien essai, plus large : un élément « price » qui contient un nombre et des €
-  if (!prix){
-    const e = tous('[class*="price" i],[data-testid*="price" i],[id*="price" i]').find(x => /\d[\d\s.]*[,.]?\d*\s*€|€\s*\d/.test(x.textContent) && x.textContent.length < 60);
-    const m = e && e.textContent.replace(/ /g, " ").match(/\d[\d\s.]*(?:[,.]\d{1,2})?/);
-    if (m) prix = m[0];
-  }
-
-  // 3. La taille et la couleur que tu as choisies sur la page
-  const zones = { taille: /taille|size|pointure|tama/i, couleur: /couleur|colou?r|coloris/i };
-  // Une vraie taille ou couleur : courte, sans code produit (pas « 12,B094WLFGD3 »)
-  const correct = v => v && v.length < 30 && !/(?=[A-Z0-9]*\d)[A-Z0-9]{7,}|,/.test(v) && !/^\d{3,}$/.test(v);
-  const choisi = re => {
-    // a) Amazon : « Taille : M », « Couleur : Midnight Black »
-    const amazon = texte(d.querySelector(re === zones.taille ? "#variation_size_name .selection, #inline-twister-expanded-dimension-text-size_name" : "#variation_color_name .selection, #inline-twister-expanded-dimension-text-color_name"));
-    if (correct(amazon)) return amazon;
-    // b) une liste déroulante « Taille »
-    for (const s of tous("select")){
-      const etiquette = (s.name || "") + " " + (s.id || "") + " " + (s.getAttribute("aria-label") || "") + " " + texte(s.labels && s.labels[0]);
-      if (re.test(etiquette) && s.selectedIndex > 0 && correct(texte(s.options[s.selectedIndex]))) return texte(s.options[s.selectedIndex]);
-    }
-    // c) un bouton coché / sélectionné dans une zone « taille » ou « couleur »
-    for (const e of tous('[aria-checked="true"],[aria-pressed="true"],[aria-selected="true"],input:checked,[class*="selected" i],[class*="is-active" i]')){
-      // « unselected », « not-selected »… veulent dire le contraire
-      if (/(un|not|non|de)-?selected/i.test(String(e.className && e.className.baseVal !== undefined ? e.className.baseVal : e.className))) continue;
-      const zone = e.closest('[class*="size" i],[class*="taille" i],[class*="color" i],[class*="couleur" i],[id*="size" i],[id*="color" i],[data-testid*="size" i],[data-testid*="color" i],fieldset,[role="radiogroup"]');
-      if (!zone) continue;
-      const nomZone = (zone.className || "") + " " + (zone.id || "") + " " + (zone.getAttribute("data-testid") || "") + " " + (zone.getAttribute("aria-label") || "") + " " + texte(zone.querySelector("legend,label"));
-      if (!re.test(nomZone)) continue;
-      const v = e.matches("input") ? (texte(e.labels && e.labels[0]) || e.value) : texte(e);
-      if (correct(v)) return v;
+  // « Couleur : Noir », ou « Couleur » sur une ligne et « Noir » sur la suivante
+  const valeurApres = re => {
+    for (let i = 0; i < lignes.length; i++){
+      const m = lignes[i].match(re); if (!m) continue;
+      let v = (m[1] || "").trim() || (lignes[i + 1] || "");
+      v = v.split(/\s\/\s|\/|,|\|/)[0].trim();
+      if (v && v.length <= 25 && !/guide|choisir|sélectionn|tableau|disponible|^taille|^couleur/i.test(v)) return v;
     }
     return "";
   };
-  // Dernier essai : « Couleur : Midnight Black » écrit dans le titre de la page (Amazon)
-  const dansTitre = re => { const m = d.title.match(new RegExp("(?:" + re.source + ")\\s*:\\s*([^,:|]{1,30})", "i")); return m && correct(m[1].trim()) ? m[1].trim() : ""; };
-  taille = choisi(zones.taille) || taille || dansTitre(zones.taille);
-  couleur = choisi(zones.couleur) || couleur || dansTitre(zones.couleur);
-  // Les noms très longs (Amazon) : on garde le début, jusqu'à la première virgule
-  if (nom.length > 70){ const coupe = nom.slice(25).search(/,| - /); if (coupe >= 0) nom = nom.slice(0, 25 + coupe); }
-
-  // « Noir/Dark Smoke Grey/Smoke Grey » → « Noir »
-  couleur = couleur.split("/")[0].trim();
-  const infos = { lien: location.href, nom: nom.slice(0, 120), prix: String(prix).trim(), couleur: couleur.slice(0, 40), taille: taille.slice(0, 20) };
-  if (lire) return infos;
-  window.open(APP + "/#ajout?" + new URLSearchParams(infos), "_blank");
+  r.couleur = valeurApres(/^(?:couleur|coloris)(?: sélectionnée)?\s*:?\s*(.*)$/i) || undefined;
+  // La taille : seulement si elle est écrite « Taille : M » (sinon c'est juste la liste de toutes les tailles)
+  const taille = lignes.join("\n").match(/(?:taille|pointure)(?: sélectionnée| choisie)?\s*:\s*([^\n,|:]{1,12})/i);
+  if (taille && !/guide|choisir|sélectionner|tableau/i.test(taille[1])) r.taille = taille[1].trim();
+  return r;
 }
-function lienBoutonMagique(){
-  return "javascript:" + encodeURIComponent("(" + boutonMagique.toString() + ")(" + JSON.stringify(location.origin) + ")");
+
+// On a collé quelque chose : un lien, ou toute une page
+function recevoirCollage(texte){
+  const champ = $("#g-lien"), info = $("#g-info-lien");
+  if (!champ) return;
+  if (estUnLien(texte)){ champ.value = texte.trim(); remplirDepuisLien(); return; }
+  const r = lireTextePage(texte);
+  if (r.lien && !champ.value.trim()){ champ.value = r.lien; dernierLienLu = r.lien; }
+  const adresse = lireAdresse(champ.value.trim());
+  r.couleur = r.couleur || adresse.couleur;
+  r.taille = r.taille || adresse.taille;
+  // Le nom écrit dans le lien est plus fiable que celui deviné dans le texte de la page
+  r.nom = adresse.nom || r.nom;
+  const trouve = [];
+  if (r.nom && mettreAuto("g-nom", nomEssentiel(r.nom))) trouve.push("le nom");
+  if (r.prix && mettreAuto("g-prix", String(r.prix).replace(".", ","))){ $("#g-estime").checked = false; trouve.push("le prix"); }
+  const ajouts = [];
+  if (r.taille){ ajouts.push("Taille " + (/^[a-z]{1,4}$/i.test(r.taille) ? r.taille.toUpperCase() : r.taille)); trouve.push("la taille"); }
+  if (r.couleur){ ajouts.push("Couleur " + r.couleur); trouve.push("la couleur"); }
+  if (ajouts.length) mettreAuto("g-precisions", ajouts.join(", "));
+  const et = l => l.join(", ").replace(/, ([^,]*)$/, " et $1");
+  info.textContent = trouve.length
+    ? "✅ J'ai trouvé " + et(trouve) + " dans la page. Vérifie, puis clique sur « Ajouter »." + (champ.value.trim() ? "" : " Pense à coller aussi le lien du produit.")
+    : "Je n'ai rien trouvé dans ce texte. Copie toute la page du produit (« Tout sélectionner » puis « Copier ») et recolle.";
 }
 
 // Le nom du cadeau, juste l'essentiel : sans la couleur, sans la description après la virgule.
