@@ -4,6 +4,7 @@
 // Le serveur du site : les profils (prénom + code), les listes de chacun et les réservations.
 // Le serveur du site : les profils (prénom + code), les listes de chacun et les réservations.
 // Le serveur du site : les profils (prénom + code), les listes de chacun, leurs thèmes et les réservations.
+// Le serveur du site : les profils (prénom + code), les listes de chacun, leurs thèmes et les réservations.
 import { getStore } from "@netlify/blobs";
 import { scryptSync, randomBytes, timingSafeEqual, createHmac } from "node:crypto";
 
@@ -82,6 +83,84 @@ function nettoyerCadeau(c){
   };
 }
 
+// ---------- Aperçu d'un lien : on lit la page du produit pour trouver le nom, le prix, la taille et la couleur ----------
+
+// Taille et couleur écrites dans l'adresse, par exemple « #/172-couleur-noir/398-taille-45 » (Itaka)
+function optionsDansLien(u){
+  const options = {};
+  const noter = (cle, valeur) => {
+    const v = decodeURIComponent(String(valeur || "")).replace(/[-_+]/g, " ").trim();
+    if (!v) return;
+    const k = cle.toLowerCase();
+    if (/^(couleur|color|colour|coloris)$/.test(k)) options.couleur = v;
+    else if (/^(taille|size|pointure)$/.test(k)) options.taille = v;
+  };
+  for (const morceau of u.hash.split("/")){
+    const m = morceau.match(/^\d+-([a-zA-Z]+)-(.+)$/);
+    if (m) noter(m[1], m[2]);
+  }
+  for (const [cle, valeur] of u.searchParams) noter(cle, valeur);
+  return options;
+}
+
+// Cherche un prix dans les données « produit » que les boutiques mettent dans leurs pages
+function prixDansPage(html){
+  for (const bloc of html.matchAll(/<script[^>]*application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi)){
+    try{
+      const trouve = chercherPrix(JSON.parse(bloc[1].trim()));
+      if (trouve) return trouve;
+    }catch{}
+  }
+  const meta = html.match(/<meta[^>]+(?:property|name|itemprop)=["'](?:product:price:amount|og:price:amount|price)["'][^>]*content=["']([\d.,\s]+)["']/i)
+    || html.match(/<meta[^>]+content=["']([\d.,\s]+)["'][^>]*(?:property|name|itemprop)=["'](?:product:price:amount|og:price:amount|price)["']/i);
+  return meta ? nombre(meta[1]) : null;
+}
+function chercherPrix(o){
+  if (!o || typeof o !== "object") return null;
+  if (Array.isArray(o)){ for (const x of o){ const p = chercherPrix(x); if (p) return p; } return null; }
+  if (o.offers){
+    for (const off of [].concat(o.offers)){ const p = nombre(off.price ?? off.lowPrice); if (p) return p; }
+  }
+  for (const v of Object.values(o)){ const p = chercherPrix(v); if (p) return p; }
+  return null;
+}
+function nombre(x){
+  const n = parseFloat(String(x ?? "").replace(/\s/g, "").replace(",", "."));
+  return Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : null;
+}
+function nomDansPage(html){
+  const m = html.match(/<meta[^>]+property=["']og:title["'][^>]*content=["']([^"']+)["']/i) || html.match(/<title[^>]*>([^<]+)<\/title>/i);
+  if (!m) return null;
+  return m[1].replace(/&amp;/g, "&").replace(/&#0?39;|&apos;/g, "'").replace(/&quot;/g, '"').split(/\s[|–-]\s/)[0].trim().slice(0, 120) || null;
+}
+
+// Refuse les adresses internes (sécurité : le serveur ne va lire que de vrais sites web)
+function lienAutorise(u){
+  if (u.protocol !== "https:" && u.protocol !== "http:") return false;
+  const h = u.hostname.toLowerCase();
+  if (h === "localhost" || h.endsWith(".local") || h.endsWith(".internal") || !h.includes(".")) return false;
+  if (/^[\d.]+$/.test(h) || h.includes(":")) return false;
+  return true;
+}
+
+async function apercu(lien){
+  let u;
+  try{ u = new URL(String(lien || "").trim()); }catch{ return { erreur: "Ce lien n'est pas valide." }; }
+  if (!lienAutorise(u)) return { erreur: "Ce lien n'est pas valide." };
+  const resultat = { ...optionsDansLien(u) };
+  try{
+    const r = await fetch(u.href, { redirect: "follow", signal: AbortSignal.timeout(7000), headers: {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+      "Accept": "text/html", "Accept-Language": "fr-FR,fr;q=0.9" } });
+    if (r.ok && /html/i.test(r.headers.get("content-type") || "")){
+      const html = (await r.text()).slice(0, 1500000);
+      resultat.prix = prixDansPage(html);
+      resultat.nom = nomDansPage(html);
+    }
+  }catch{}
+  return resultat;
+}
+
 export default async (req) => {
   const s = store();
   const chemin = new URL(req.url).pathname.replace(/^\/api\/?/, "").split("/").filter(Boolean);
@@ -112,6 +191,14 @@ export default async (req) => {
     }
     const token = signer(await secret(s), { id, exp: Date.now() + DUREE_SESSION });
     return json({ token, profil: { id, prenom: profils[id].prenom, admin: ADMINS.includes(id), theme: themeDe(profils[id]) } });
+  }
+
+  // Aperçu d'un lien de produit (seulement pour les personnes connectées)
+  if (req.method === "POST" && chemin[0] === "apercu"){
+    const moi = await qui(req, s);
+    if (!moi || !profils[moi.id]) return erreur("Connecte-toi pour utiliser cette fonction.", 401);
+    const r = await apercu(body.lien);
+    return r.erreur ? erreur(r.erreur) : json(r);
   }
 
   if (chemin[0] !== "listes") return erreur("Adresse inconnue", 404);
