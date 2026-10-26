@@ -798,6 +798,12 @@ function vueMaListe(main){
   ligne.append(champ("g-lien", "Lien du produit", "url", {placeholder: "https://…", value: c ? c.lien : ""}));
   ligne.append(champ("g-prix", "Prix (€)", "number", {min: 0, step: "0.01", inputMode: "decimal", value: c && c.prix != null ? c.prix : ""}));
   f.append(ligne);
+  const infoLien = el("p", "aide"); infoLien.id = "g-info-lien";
+  infoLien.textContent = c ? "" : "Colle le lien du produit : le prix, la taille et la couleur se remplissent tout seuls quand c'est possible.";
+  f.append(infoLien);
+  const champLien = ligne.querySelector("#g-lien");
+  champLien.addEventListener("change", () => remplirDepuisLien());
+  champLien.addEventListener("paste", () => setTimeout(remplirDepuisLien, 0));
   const coche = el("label", "coche"); coche.htmlFor = "g-estime";
   const cb = el("input"); cb.type = "checkbox"; cb.id = "g-estime"; cb.checked = !!(c && c.prixEstime);
   coche.append(cb, "Le prix est une estimation (« env. »)"); f.append(coche);
@@ -857,6 +863,31 @@ function vueMaListe(main){
   droite.append(ol);
   deux.append(droite);
   main.append(deux);
+}
+
+// Quand on colle un lien : le serveur lit la page du produit, et on remplit les cases encore vides
+let dernierLienLu = "";
+async function remplirDepuisLien(){
+  const champ = $("#g-lien"), info = $("#g-info-lien");
+  if (!champ || !info) return;
+  const lienP = champ.value.trim();
+  if (!safeUrl(lienP) || lienP === dernierLienLu) return;
+  dernierLienLu = lienP;
+  info.textContent = "🔎 Je cherche le prix, la taille et la couleur…";
+  let r;
+  try{ r = await api("apercu", {method: "POST", body: {lien: lienP}, auth: true}); }
+  catch(e){ info.textContent = e.status ? e.message : "Le site n'arrive pas à lire ce lien. Remplis les cases à la main."; return; }
+  if ($("#g-lien") !== champ || champ.value.trim() !== lienP) return; // le formulaire a changé entre-temps
+  const trouve = [];
+  if (r.nom && !$("#g-nom").value.trim()){ $("#g-nom").value = r.nom; trouve.push("le nom"); }
+  if (r.prix && !$("#g-prix").value){ $("#g-prix").value = r.prix; $("#g-estime").checked = false; trouve.push("le prix"); }
+  const prec = $("#g-precisions"), ajouts = [];
+  if (r.taille && !/taille|pointure/i.test(prec.value)){ ajouts.push("Taille " + r.taille); trouve.push("la taille"); }
+  if (r.couleur && !/couleur/i.test(prec.value)){ ajouts.push("Couleur " + r.couleur); trouve.push("la couleur"); }
+  if (ajouts.length) prec.value = [...ajouts, prec.value.trim()].filter(Boolean).join(", ");
+  info.textContent = trouve.length
+    ? "✅ J'ai rempli " + trouve.join(", ").replace(/, ([^,]*)$/, " et $1") + ". Vérifie, puis clique sur le bouton."
+    : "Je n'ai rien trouvé sur cette page. Remplis les cases à la main.";
 }
 
 // Choisir le fond de la page et le style de la liste ; tout le monde verra la liste avec ces thèmes
