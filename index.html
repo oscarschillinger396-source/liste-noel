@@ -297,11 +297,19 @@ function euro(n){ return n.toLocaleString("fr-FR", {minimumFractionDigits: n % 1
 function safeUrl(u){ try{ const x = new URL(u); return /^https?:$/.test(x.protocol) ? x : null; }catch{ return null; } }
 function el(tag, cls, text){ const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 
+// Chez nous, on fête Noël le 24 décembre au soir
 function joursAvantNoel(){
   const now = new Date(), today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  let xmas = new Date(now.getFullYear(), 11, 25);
-  if (today > xmas) xmas = new Date(now.getFullYear() + 1, 11, 25);
+  let xmas = new Date(now.getFullYear(), 11, 24);
+  if (today > xmas) xmas = new Date(now.getFullYear() + 1, 11, 24);
   return { jours: Math.round((xmas - today) / 864e5), annee: xmas.getFullYear() };
+}
+
+// Met le décompte à jour ; appelé au chargement puis chaque minute, pour changer tout seul à minuit
+function majDecompte(){
+  const { jours, annee } = joursAvantNoel();
+  $("#kicker").textContent = "Grand Prix de Noël " + annee;
+  $("#decompte").textContent = jours === 0 ? "C'est Noël !" : "J-" + jours;
 }
 
 // Les précisions "Taille 46", "Couleur noir, pointure 45"… deviennent des étiquettes ; le reste reste une phrase.
@@ -400,10 +408,12 @@ function neige(){
 }
 
 function init(){
-  const { jours, annee } = joursAvantNoel();
-  $("#kicker").textContent = "Grand Prix de Noël " + annee;
   const board = $("#board");
-  board.append(cellule("Départ dans", jours === 0 ? "C'est Noël !" : "J-" + jours, "go"));
+  const go = cellule("Départ dans", "", "go");
+  go.querySelector(".v").id = "decompte";
+  board.append(go);
+  majDecompte();
+  setInterval(majDecompte, 60000);
   if (data){
     const nom = data.prenom ? "La liste " + (/^[aeiouyhéèêàâîôû]/i.test(data.prenom) ? "d'" : "de ") + data.prenom : "Ma liste de Noël";
     $("#title").textContent = nom;
