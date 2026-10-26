@@ -90,8 +90,21 @@ h1 .tree{display:inline-block;transform:skewX(6deg);font-size:.6em;vertical-alig
 .slot{position:relative;display:grid;grid-template-columns:76px minmax(0,1fr) auto;align-items:center;gap:20px;
   background:var(--snow);color:var(--night);border-radius:12px;padding:18px 20px 18px 0;overflow:hidden;
   box-shadow:0 10px 28px rgba(0,0,0,.35)}
-.slot::before{content:"";position:absolute;inset:0 auto 0 0;width:76px;background:var(--red)}
-.pos{position:relative;display:grid;place-items:center;font-family:var(--display);font-size:34px;line-height:1;color:var(--snow);transform:skewX(-6deg)}
+.slot::before{content:"";position:absolute;inset:0 auto 0 0;width:76px;background:var(--band, var(--red))}
+.pos{position:relative;display:grid;place-items:center;font-family:var(--display);font-size:34px;line-height:1;color:var(--snow);transform:skewX(-6deg);
+  text-shadow:0 2px 0 rgba(0,0,0,.4)}
+
+/* Thèmes de fond (toute la page) : chaque personne choisit le sien pour sa liste */
+body[data-fond="polaire"]{--night:#0b1a33;--night-2:#1d3a66;--panel:#10264a;--line:#2a4a7a;--frost:#a9c3e6}
+body[data-fond="bordeaux"]{--night:#2a0a10;--night-2:#5a1422;--panel:#3a0f17;--line:#6e2633;--frost:#e3b3ba}
+body[data-fond="chocolat"]{--night:#24160f;--night-2:#4a2e1e;--panel:#33201a;--line:#5e3f2c;--frost:#d9bfa8}
+body[data-fond="galaxie"]{--night:#140b2a;--night-2:#3a1f6b;--panel:#1e1240;--line:#3d2a73;--frost:#c3b3ea}
+/* Thèmes de liste (la bande à gauche de chaque cadeau) */
+body[data-liste="dore"], .liste-dore{--band:linear-gradient(180deg,#f7d57a,#c8952f)}
+body[data-liste="sucre"], .liste-sucre{--band:repeating-linear-gradient(-45deg,#e0313f 0 12px,#fff 12px 24px)}
+body[data-liste="glace"], .liste-glace{--band:linear-gradient(180deg,#7fd0ff,#2f7fd6)}
+body[data-liste="foret"], .liste-foret{--band:linear-gradient(180deg,#2f8a5f,#165a3b)}
+.liste-course{--band:var(--red)}
 .pos small{display:block;font-family:var(--label);font-size:12px;letter-spacing:.2em;transform:none;opacity:.85}
 .info{display:grid;gap:6px;min-width:0}
 .info h3{margin:0;font-family:var(--label);font-weight:700;font-size:23px;line-height:1.15;letter-spacing:.01em;overflow-wrap:anywhere}
@@ -207,7 +220,17 @@ footer small{color:var(--frost);font-size:14px}
 .profils{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}
 .profil{position:relative;display:grid;gap:4px;padding:20px 20px 18px 34px;border-radius:12px;text-decoration:none;color:var(--night);background:var(--snow);
   box-shadow:0 10px 28px rgba(0,0,0,.35);overflow:hidden}
-.profil::before{content:"";position:absolute;inset:0 auto 0 0;width:14px;background:repeating-conic-gradient(var(--night) 0 25%, var(--snow) 0 50%) 0 0/7px 7px}
+.profil::before{content:"";position:absolute;inset:0 auto 0 0;width:14px;background:var(--band, repeating-conic-gradient(var(--night) 0 25%, var(--snow) 0 50%) 0 0/7px 7px)}
+
+/* Choix des thèmes */
+.themes{display:grid;gap:14px}
+.themes h3{margin:0;font:600 14px var(--label);letter-spacing:.12em;text-transform:uppercase;color:var(--frost)}
+.pastilles{display:flex;flex-wrap:wrap;gap:10px}
+.pastille{display:grid;justify-items:center;gap:6px;cursor:pointer;border:0;background:none;color:var(--snow);font:600 13px var(--label);letter-spacing:.04em;padding:0;width:84px}
+.pastille .rond{width:56px;height:56px;border-radius:14px;box-shadow:inset 0 0 0 2px rgba(255,255,255,.25)}
+.pastille[aria-pressed="true"] .rond{box-shadow:0 0 0 3px var(--gold), inset 0 0 0 2px rgba(255,255,255,.25)}
+.pastille[aria-pressed="true"]{color:var(--gold)}
+@media (prefers-reduced-motion:no-preference){ .pastille .rond{transition:transform .15s ease} .pastille:hover .rond{transform:translateY(-2px)} body{transition:background-color .3s ease} }
 .profil .nom{font-family:var(--display);font-size:32px;line-height:1.05;transform:skewX(-6deg);overflow-wrap:anywhere}
 .profil .nb{font:600 14px var(--label);letter-spacing:.1em;text-transform:uppercase;color:#4a6158}
 .profil .voir{font:700 14px var(--label);letter-spacing:.1em;text-transform:uppercase;color:var(--red);margin-top:6px}
@@ -304,6 +327,9 @@ function euro(n){ return n.toLocaleString("fr-FR", {minimumFractionDigits: n % 1
 function safeUrl(u){ try{ const x = new URL(u); return /^https?:$/.test(x.protocol) ? x : null; }catch{ return null; } }
 function slug(s){ return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30); }
 function de(prenom){ return (/^[aeiouyhéèêàâîôû]/i.test(prenom) ? "d'" : "de ") + prenom; }
+// « oscar » → « Oscar », pour l'affichage
+function joli(prenom){ const p = String(prenom || "").trim(); return p.charAt(0).toUpperCase() + p.slice(1); }
+function joliListe(l){ return l ? {...l, prenom: joli(l.prenom)} : l; }
 function lien(href, cls, texte){ const a = el("a", cls, texte); a.href = href; return a; }
 function bouton(cls, texte, onclick){ const b = el("button", cls, texte); b.type = "button"; b.onclick = onclick; return b; }
 
@@ -368,12 +394,12 @@ async function aller(){
   if (vue !== "ma-liste") edition = null;
   chargement = true; render();
   try{
-    if (vue === "accueil" || vue === "connexion"){ listes = await api("listes"); enLigne = true; }
+    if (vue === "accueil" || vue === "connexion"){ listes = (await api("listes")).map(joliListe); enLigne = true; }
     if (vue === "liste"){
       if (vueId === "demo") liste = demo();
-      else { liste = await api("listes/" + vueId); enLigne = true; }
+      else { liste = joliListe(await api("listes/" + vueId)); enLigne = true; }
     }
-    if (vue === "ma-liste"){ liste = await api("listes/" + cible, {auth: true}); enLigne = true; }
+    if (vue === "ma-liste"){ liste = joliListe(await api("listes/" + cible, {auth: true})); enLigne = true; }
   }catch(e){
     if (vue === "ma-liste" && !session){ location.hash = "connexion"; return; }
     liste = null;
@@ -391,7 +417,30 @@ function demo(){
 }
 
 /* ---------- Affichage ---------- */
+/* ---------- Thèmes ---------- */
+const FONDS = {
+  sapin:    { nom: "Sapin",    couleurs: ["#123a2f", "#0a231c"] },
+  polaire:  { nom: "Polaire",  couleurs: ["#1d3a66", "#0b1a33"] },
+  bordeaux: { nom: "Bordeaux", couleurs: ["#5a1422", "#2a0a10"] },
+  chocolat: { nom: "Chocolat", couleurs: ["#4a2e1e", "#24160f"] },
+  galaxie:  { nom: "Galaxie",  couleurs: ["#3a1f6b", "#140b2a"] },
+};
+const STYLES_LISTE = {
+  course: { nom: "Course",       apercu: "#e0313f" },
+  dore:   { nom: "Doré",         apercu: "linear-gradient(180deg,#f7d57a,#c8952f)" },
+  sucre:  { nom: "Sucre d'orge", apercu: "repeating-linear-gradient(-45deg,#e0313f 0 8px,#fff 8px 16px)" },
+  glace:  { nom: "Glace",        apercu: "linear-gradient(180deg,#7fd0ff,#2f7fd6)" },
+  foret:  { nom: "Forêt",        apercu: "linear-gradient(180deg,#2f8a5f,#165a3b)" },
+};
+// Sur une liste : le thème de son propriétaire. Ailleurs : le sien si on est connecté.
+function appliquerTheme(){
+  const t = ((vue === "liste" || vue === "ma-liste") && liste && liste.theme) || (session && session.profil.theme) || {};
+  document.body.dataset.fond = FONDS[t.fond] ? t.fond : "sapin";
+  document.body.dataset.liste = STYLES_LISTE[t.liste] ? t.liste : "course";
+}
+
 function render(){
+  appliquerTheme();
   renderNav();
   const main = $("#main"); main.innerHTML = "";
   ({bienvenue: vueBienvenue, accueil: vueAccueil, liste: vueListe, connexion: vueConnexion, inscription: vueInscription, "ma-liste": vueMaListe})[vue](main);
@@ -402,7 +451,7 @@ function renderNav(){
   n.append(lien("#accueil", "brand", "🎄 Noël en famille"));
   const d = el("div", "nav-droite");
   if (session){
-    const s = el("span", "statut"); s.append("Connecté : ", el("b", null, session.profil.prenom)); d.append(s);
+    const s = el("span", "statut"); s.append("Connecté : ", el("b", null, joli(session.profil.prenom))); d.append(s);
     if (estAdmin()) d.append(el("span", "admin-badge", "🛡️ Admin"));
     d.append(lien("#accueil", "btn ghost small", "Toutes les listes"));
     d.append(lien("#ma-liste", "btn small", "Ma liste"));
@@ -470,7 +519,8 @@ function vueAccueil(main){
   main.append(g);
 }
 function carteProfil(l){
-  const a = lien("#liste-" + l.id, "profil" + (session && session.profil.id === l.id ? " moi" : ""));
+  const a = lien("#liste-" + l.id, "profil" + (session && session.profil.id === l.id ? " moi" : "") +
+    (l.theme && STYLES_LISTE[l.theme.liste] ? " liste-" + l.theme.liste : ""));
   a.append(el("span", "nb", session && session.profil.id === l.id ? "Ma liste" : "Liste de Noël"),
     el("span", "nom", l.prenom), el("span", "nb", l.nb + (l.nb > 1 ? " cadeaux" : " cadeau")), el("span", "voir", "Voir la liste →"));
   return a;
@@ -719,11 +769,24 @@ function formCompte(main, inscription){
 function vueMaListe(main){
   const autre = cible !== session.profil.id; // l'admin modifie la liste de quelqu'un d'autre
   if (autre && liste) entete("Liste " + de(liste.prenom), "🛡️ Mode admin : tu modifies la liste " + de(liste.prenom) + ".");
-  else if (autre) entete("Chargement…", "");
+  else if (autre) entete(chargement ? "Chargement…" : "Liste introuvable", "");
   else entete("Ma liste", "Ajoute tes idées de cadeaux. Toute la famille pourra les voir et les réserver, mais toi, tu ne verras pas ce qui est réservé.");
-  if (chargement || !liste){ tableau([["Cadeaux", "…"], ["Total env.", "…"]]); main.append(el("p", "aide", "Chargement de ta liste…")); return; }
+  if (chargement){ tableau([["Cadeaux", "…"], ["Total env.", "…"]]); main.append(el("p", "aide", "Chargement de la liste…")); return; }
+  if (!liste){
+    // La liste a été supprimée, ou le serveur ne répond pas
+    tableau([["Cadeaux", "—"], ["Total env.", "—"]]);
+    if (enLigne === false){ hors_ligne(main); return; }
+    const v = el("div", "empty");
+    v.append(el("strong", null, autre ? "Cette liste n'existe plus" : "Ta liste n'existe plus"),
+      autre ? "Elle a peut-être été supprimée." : "Elle a été supprimée. Déconnecte-toi, puis crée un nouveau profil.");
+    main.append(v);
+    if (!autre) main.append(bouton("btn deco", "🚪 Se déconnecter", deconnecter));
+    return;
+  }
   const total = liste.cadeaux.reduce((s, c) => s + (+c.prix || 0), 0);
   tableau([["Cadeaux", String(liste.cadeaux.length)], ["Total env.", total ? Math.round(total).toLocaleString("fr-FR") + " €" : "—"]]);
+
+  main.append(choixThemes(autre));
 
   const deux = el("div", "deux");
   // Formulaire
@@ -778,7 +841,7 @@ function vueMaListe(main){
   }
   const ol = el("ol", "grid");
   if (!liste.cadeaux.length){
-    const li = el("li", "empty"); li.append(el("strong", null, "Ta liste est vide"), "Ajoute ton premier cadeau avec le formulaire.");
+    const li = el("li", "empty"); li.append(el("strong", null, autre ? "Sa liste est vide" : "Ta liste est vide"), "Ajoute un premier cadeau avec le formulaire.");
     ol.append(li);
   }
   trier(liste.cadeaux).forEach((x, i) => {
@@ -794,6 +857,45 @@ function vueMaListe(main){
   droite.append(ol);
   deux.append(droite);
   main.append(deux);
+}
+
+// Choisir le fond de la page et le style de la liste ; tout le monde verra la liste avec ces thèmes
+function choixThemes(autre){
+  const t = liste.theme || {fond: "sapin", liste: "course"};
+  const box = el("div", "carte themes"); box.style.maxWidth = "none";
+  box.append(el("h2", null, autre ? "🎨 Ses thèmes" : "🎨 Mes thèmes"));
+  const rangee = (titre, choix, cle, apercu) => {
+    box.append(el("h3", null, titre));
+    const p = el("div", "pastilles"); p.setAttribute("role", "group"); p.setAttribute("aria-label", titre);
+    Object.entries(choix).forEach(([id, info]) => {
+      const b = bouton("pastille", null, () => changerTheme({...t, [cle]: id}));
+      b.setAttribute("aria-pressed", t[cle] === id);
+      const rond = el("span", "rond"); rond.style.background = apercu(info);
+      b.append(rond, info.nom);
+      p.append(b);
+    });
+    box.append(p);
+  };
+  rangee("Fond de la page", FONDS, "fond", i => "linear-gradient(160deg," + i.couleurs[0] + "," + i.couleurs[1] + ")");
+  rangee("Style de la liste", STYLES_LISTE, "liste", i => i.apercu);
+  if (msg.theme) box.append(el("p", msg.err ? "alerte" : "aide", msg.theme));
+  return box;
+}
+
+async function changerTheme(theme){
+  const avant = liste.theme;
+  liste.theme = theme; msg = {}; render(); // on montre tout de suite le nouveau thème
+  try{
+    const r = await api("listes/" + cible + "/theme", {method: "PUT", body: theme, auth: true});
+    liste.theme = r.theme;
+    if (cible === session.profil.id) ecrireSession({...session, profil: {...session.profil, theme: r.theme}});
+    msg = {theme: "Thème enregistré !"};
+  }catch(e){
+    if (!session){ location.hash = "connexion"; return; }
+    liste.theme = avant;
+    msg = {theme: e.status ? e.message : "Le site n'arrive pas à joindre son serveur.", err: true};
+  }
+  render();
 }
 
 // Enregistre toute la liste ; renvoie un message d'erreur, ou rien si c'est bon
@@ -838,7 +940,7 @@ setInterval(majDecompte, 60000);
 // Les listes ouvertes se mettent à jour toutes les 30 secondes (nouvelles réservations, nouveaux cadeaux)
 setInterval(async () => {
   if (vue !== "liste" || !liste || liste.demo || enCours || aConfirmer) return;
-  try{ const l = await api("listes/" + liste.id); liste = l; render(); }catch{}
+  try{ const l = await api("listes/" + liste.id); liste = joliListe(l); render(); }catch{}
 }, 30000);
 aller();
 neige();
