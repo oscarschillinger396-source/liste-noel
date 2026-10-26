@@ -256,6 +256,8 @@ footer small{color:var(--frost);font-size:14px}
 .magique[open] summary::after{content:"  ▴ Fermer"}
 .magique-etapes{margin:0;padding-left:22px;display:grid;gap:10px;color:var(--snow)}
 .magique-btn{cursor:grab;margin-left:6px}
+.rang-magique{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;font:500 13px var(--body);letter-spacing:0;text-transform:none;color:var(--frost)}
+.rang-magique .magique-btn{margin-left:0;font-size:13px}
 .rang-lien{display:flex;gap:8px;align-items:stretch}
 .rang-lien input{flex:1;min-width:0}
 .rang-lien .effacer-lien{flex:none;text-transform:none;letter-spacing:.02em}
@@ -842,6 +844,18 @@ function vueMaListe(main){
   effacer.title = "Effacer le lien";
   const rangLien = el("div", "rang-lien"); rangLien.append(blocLien.querySelector("input"), effacer);
   blocLien.append(rangLien);
+  // Le bouton magique, juste à côté du lien : à glisser dans la barre des favoris
+  const magique = el("a", "btn small magique-btn", "🎁 Bouton magique");
+  magique.href = lienBoutonMagique();
+  magique.title = "Glisse-moi dans ta barre des favoris";
+  magique.onclick = e => {
+    e.preventDefault();
+    $("#g-info-lien").textContent = "⚡ Ce bouton ne se clique pas ici : glisse-le dans ta barre des favoris (Ctrl + Maj + B pour l'afficher). Ensuite, sur la page d'un produit, choisis ta taille et ta couleur, puis clique sur le favori : tout se remplit ici, prix compris.";
+  };
+  const rangMagique = el("div", "rang-magique");
+  rangMagique.append(magique, el("span", null, "← glisse-le dans tes favoris pour tout remplir depuis la page du produit, prix compris"));
+  blocLien.append(rangMagique);
+  blocLien.style.gridColumn = "1 / -1"; // le lien prend toute la largeur, le prix passe en dessous
   ligne.append(blocLien);
   ligne.append(champ("g-prix", "Prix (€)", "text", {inputMode: "decimal", placeholder: "Ex. 49,99", value: c && c.prix != null ? String(c.prix).replace(".", ",") : ""}));
   f.append(ligne);
@@ -1048,24 +1062,52 @@ function boutonMagique(APP, lire){
   // 2. Les balises meta, puis le prix affiché sur la page
   const meta = n => texte(d.querySelector('meta[property="' + n + '"],meta[name="' + n + '"]'));
   nom = nom || meta("og:title") || texte(d.querySelector("h1")) || d.title;
-  prix = prix || meta("product:price:amount") || meta("og:price:amount") || texte(d.querySelector('[itemprop="price"]'));
+  // Le prix, en essayant de plus en plus de cachettes, de la plus sûre à la moins sûre
+  const twitter = meta("twitter:data1");
+  prix = prix || meta("product:price:amount") || meta("og:price:amount") || (/€|EUR/i.test(twitter) ? twitter.replace(/[^\d,.\s]/g, "") : "")
+    || texte(d.querySelector('[itemprop="price"]'));
+  // Attributs que posent beaucoup de boutiques (Magento, PrestaShop, WooCommerce…)
   if (!prix){
-    const e = d.querySelector("#corePrice_feature_div .a-offscreen, #corePriceDisplay_desktop_feature_div .a-offscreen, .a-price .a-offscreen")
-      || tous('[class*="price" i],[data-testid*="price" i],[id*="price" i]').find(x => /\d[\d\s.]*[,.]?\d*\s*€|€\s*\d/.test(x.textContent) && x.textContent.length < 60);
+    const a = d.querySelector("[data-price-amount],[data-price],[data-product-price],[data-final-price]");
+    if (a) prix = a.getAttribute("data-price-amount") || a.getAttribute("data-price") || a.getAttribute("data-product-price") || a.getAttribute("data-final-price") || "";
+    if (prix && !/\d/.test(prix)) prix = "";
+  }
+  // Boutiques Shopify : le prix est rangé dans la page, en centimes
+  if (!prix){
+    try{ const v = window.ShopifyAnalytics.meta.product.variants[0].price; if (v) prix = String(v / 100); }catch(e){}
+  }
+  // Amazon
+  if (!prix){
+    const e = d.querySelector("#corePrice_feature_div .a-offscreen, #corePriceDisplay_desktop_feature_div .a-offscreen, .a-price .a-offscreen");
+    if (e) prix = e.textContent;
+  }
+  // Le prix affiché à l'écran, sous le titre du produit (en ignorant les anciens prix barrés).
+  // Marche aussi quand les centimes sont à part : « 44<sup>,99</sup> € »
+  if (!prix){
+    const barre = x => x.closest("del,s,strike,[class*='old' i],[class*='was' i],[class*='barr' i],[class*='strike' i],[class*='crossed' i],[class*='before' i],[class*='regular' i],[class*='compare' i]");
+    const titre = d.querySelector("h1");
+    const motif = /^(?:€|EUR)?\s*(\d{1,5}(?:[ .]\d{3})*(?:[,.]\d{1,2})?)\s*(?:€|EUR|TTC|\s)*$/i;
+    let trouve = null;
+    for (const x of tous("body *")){
+      if (!x.offsetParent || /^(SCRIPT|STYLE|OPTION|SELECT|INPUT|BUTTON|A|NAV|HEADER|FOOTER)$/.test(x.tagName) || barre(x)) continue;
+      if (titre && (titre.compareDocumentPosition(x) & 2)) continue; // avant le titre : menus, bandeaux…
+      let t = (x.innerText || "").replace(/ /g, " ").replace(/\s*([,.])\s*/g, "$1").replace(/\s+/g, " ").trim();
+      if (!t || t.length > 22 || !/€|EUR/i.test(t)) continue;
+      const sup = x.querySelector("sup");
+      if (sup && !/[,.]/.test(t)){ const c = sup.textContent.trim(); t = t.replace(c, "," + c); }
+      const m = t.match(motif);
+      if (!m) continue;
+      const p = { valeur: m[1], prixDansClasse: /price|prix|amount|montant/i.test(String(x.className && x.className.baseVal !== undefined ? x.className.baseVal : x.className) + " " + (x.id || "")) };
+      if (!trouve || (p.prixDansClasse && !trouve.prixDansClasse)) trouve = p;
+      if (trouve.prixDansClasse) break;
+    }
+    if (trouve) prix = trouve.valeur;
+  }
+  // Ancien essai, plus large : un élément « price » qui contient un nombre et des €
+  if (!prix){
+    const e = tous('[class*="price" i],[data-testid*="price" i],[id*="price" i]').find(x => /\d[\d\s.]*[,.]?\d*\s*€|€\s*\d/.test(x.textContent) && x.textContent.length < 60);
     const m = e && e.textContent.replace(/ /g, " ").match(/\d[\d\s.]*(?:[,.]\d{1,2})?/);
     if (m) prix = m[0];
-  }
-  // Dernier essai : le premier prix en euros écrit sur la page (pas un ancien prix barré)
-  if (!prix){
-    const barre = x => x.closest("del,s,strike,[class*='old' i],[class*='was' i],[class*='barr' i],[class*='strike' i],[class*='crossed' i],[class*='before' i]");
-    const titre = d.querySelector("h1");
-    for (const x of tous("body *")){
-      if (x.children.length || !x.offsetParent || barre(x)) continue;
-      if (titre && (titre.compareDocumentPosition(x) & 2)) continue; // avant le titre du produit : menus, bandeaux…
-      const t = x.textContent.replace(/ /g, " ").trim();
-      const m = t.length < 25 && t.match(/^(\d{1,4}(?:[ .]\d{3})*(?:[,.]\d{1,2})?)\s*€$|^€\s*(\d{1,4}(?:[ .]\d{3})*(?:[,.]\d{1,2})?)$/);
-      if (m){ prix = m[1] || m[2]; break; }
-    }
   }
 
   // 3. La taille et la couleur que tu as choisies sur la page
