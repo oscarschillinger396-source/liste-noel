@@ -2,9 +2,12 @@
 // Netlify range les données dans "Netlify Blobs" : rien à configurer.
 
 // Le serveur du site : les profils (prénom + code), les listes de chacun et les réservations.
+// Le serveur du site : les profils (prénom + code), les listes de chacun et les réservations.
 import { getStore } from "@netlify/blobs";
 import { scryptSync, randomBytes, timingSafeEqual, createHmac } from "node:crypto";
 
+// Les profils admin peuvent modifier ou supprimer toutes les listes, et donner un nouveau code
+const ADMINS = ["oscar"];
 const MAX_PROFILS = 30;
 const MAX_CADEAUX = 60;
 const DUREE_SESSION = 60 * 24 * 3600 * 1000;
@@ -102,7 +105,7 @@ export default async (req) => {
       if (!ok){ await new Promise(r => setTimeout(r, 800)); return erreur("Ce n'est pas le bon code. Réessaie.", 401); }
     }
     const token = signer(await secret(s), { id, exp: Date.now() + DUREE_SESSION });
-    return json({ token, profil: { id, prenom: profils[id].prenom } });
+    return json({ token, profil: { id, prenom: profils[id].prenom, admin: ADMINS.includes(id) } });
   }
 
   if (chemin[0] !== "listes") return erreur("Adresse inconnue", 404);
@@ -119,6 +122,27 @@ export default async (req) => {
   if (!profils[id]) return erreur("Cette liste n'existe pas.", 404);
   const moi = await qui(req, s);
   const proprietaire = moi && moi.id === id;
+  const admin = !!(moi && ADMINS.includes(moi.id) && profils[moi.id]);
+
+  if (req.method === "DELETE" && chemin.length === 2){
+    if (!admin) return erreur("Seul l'admin peut supprimer une liste.", 403);
+    if (proprietaire) return erreur("Tu ne peux pas supprimer ta propre liste.", 400);
+    delete profils[id];
+    await s.setJSON("profils", profils);
+    await s.delete("liste-" + id);
+    await s.delete("resa-" + id);
+    return json({ ok: true });
+  }
+
+  if (req.method === "POST" && chemin[2] === "code"){
+    if (!admin) return erreur("Seul l'admin peut changer le code des autres.", 403);
+    const mdp = String(body.motdepasse || "");
+    if (mdp.length < 4) return erreur("Le code doit faire au moins 4 chiffres.");
+    const sel = randomBytes(16).toString("hex");
+    profils[id] = { ...profils[id], sel, hash: hacher(mdp, sel) };
+    await s.setJSON("profils", profils);
+    return json({ ok: true });
+  }
 
   if (req.method === "GET" && chemin.length === 2){
     const cadeaux = (await s.get("liste-" + id, { type: "json" })) || [];
@@ -127,7 +151,7 @@ export default async (req) => {
   }
 
   if (req.method === "PUT" && chemin[2] === "cadeaux"){
-    if (!proprietaire) return erreur("Connecte-toi pour modifier ta liste.", 401);
+    if (!proprietaire && !admin) return erreur("Connecte-toi pour modifier ta liste.", 401);
     const cadeaux = (Array.isArray(body.cadeaux) ? body.cadeaux : []).map(nettoyerCadeau).filter(Boolean).slice(0, MAX_CADEAUX);
     await s.setJSON("liste-" + id, cadeaux);
     return json({ cadeaux });
