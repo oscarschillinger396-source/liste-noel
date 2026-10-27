@@ -283,21 +283,6 @@ footer small{color:var(--frost);font-size:14px}
 .statut b{color:var(--pseudo-moi, var(--gold))}
 .btn.ghost.sur-carte{color:var(--night);box-shadow:inset 0 0 0 2px #c9d6cf}
 
-/* Option « Néon » : tout s'allume, dans la couleur du prénom (rouge par défaut) */
-body[data-neon="1"]{--neon:var(--pseudo, #ff4d5a)}
-body[data-neon="1"] h1{text-shadow:0 0 4px #fff,0 0 12px var(--neon),0 0 26px var(--neon),0 0 48px var(--neon)}
-body[data-neon="1"] .pseudo{text-shadow:0 0 6px #fff,0 0 16px var(--pseudo, var(--neon)),0 0 34px var(--pseudo, var(--neon))}
-body[data-neon="1"] .bar h2, body[data-neon="1"] .carte h2{text-shadow:0 0 8px var(--neon),0 0 20px var(--neon)}
-body[data-neon="1"] .board{box-shadow:0 0 0 1px var(--neon),0 0 18px var(--neon),inset 0 0 18px rgba(255,255,255,.06)}
-body[data-neon="1"] .cell .v{text-shadow:0 0 8px currentColor,0 0 22px currentColor}
-body[data-neon="1"] .slot{box-shadow:0 0 0 2px var(--neon),0 0 22px var(--neon),0 10px 28px rgba(0,0,0,.35)}
-body[data-neon="1"] .pos{text-shadow:0 0 6px #fff,0 0 14px var(--neon)}
-body[data-neon="1"] .checker{box-shadow:0 0 14px var(--neon),0 0 30px var(--neon)}
-body[data-neon="1"] .profil{box-shadow:0 0 0 2px var(--pseudo-carte, var(--neon)),0 0 20px var(--pseudo-carte, var(--neon))}
-@media (prefers-reduced-motion:no-preference){
-  body[data-neon="1"] h1, body[data-neon="1"] .pseudo{animation:neon 3.2s infinite}
-  @keyframes neon{0%,18%,22%,62%,64%,100%{opacity:1}20%,63%{opacity:.72}}
-}
 
 /* Option « Mode sombre » : les cartes des cadeaux passent en sombre */
 body[data-sombre="1"]{--carte:#141c26;--carte-2:#1d2836;--carte-texte:#eef2f7;--carte-doux:#a7b4c4}
@@ -323,6 +308,74 @@ body[data-sombre="1"] .resa-ok .check{background:var(--carte-2);color:#5fe08c}
 body[data-sombre="1"] .info h3, body[data-sombre="1"] .price, body[data-sombre="1"] .choix-t{color:var(--carte-texte)}
 body[data-sombre="1"] .info a{color:#9fd3ff}
 body[data-sombre="1"] .cell.go .v{color:#ff5a66}
+
+/* ---------- Option « Néon » ----------
+   Comme des enseignes lumineuses : deux couleurs (--n1 et --n2, choisies à part, pas liées au prénom),
+   des tubes blancs au cœur avec un halo coloré, qui s'allument en grésillant puis respirent doucement. */
+body[data-neon="1"]{--n1:#ff3df0;--n2:#3df2ff;--night-2:#140a24;--line:rgba(255,255,255,.12)}
+body[data-neoncouleur="cyan"]{--n1:#3df2ff;--n2:#ff3df0}
+body[data-neoncouleur="violet"]{--n1:#b44dff;--n2:#3dffb4}
+body[data-neoncouleur="vert"]{--n1:#39ff88;--n2:#ff3d9a}
+body[data-neoncouleur="or"]{--n1:#ffcf3d;--n2:#ff3d5a}
+body[data-neoncouleur="rouge"]{--n1:#ff3048;--n2:#3dc8ff}
+body[data-neoncouleur="bleu"]{--n1:#3d7bff;--n2:#ffe23d}
+body[data-neoncouleur="sapin"]{--n1:#39ff6a;--n2:#ff3048}
+/* Le grand titre : un tube de néon */
+body[data-neon="1"] h1{color:#fff;text-shadow:0 0 2px #fff,0 0 7px var(--n1),0 0 14px var(--n1),0 0 28px var(--n1),0 0 56px var(--n1),0 0 90px var(--n1)}
+body[data-neon="1"] .pseudo{color:var(--pseudo, #fff);text-shadow:0 0 2px #fff,0 0 8px var(--pseudo, var(--n2)),0 0 18px var(--pseudo, var(--n2)),0 0 40px var(--pseudo, var(--n2))}
+body[data-neon="1"] .kicker{color:var(--n2);text-shadow:0 0 8px var(--n2)}
+body[data-neon="1"] .kicker::after{background:var(--n2);box-shadow:0 0 8px var(--n2)}
+body[data-neon="1"] .bar h2, body[data-neon="1"] .carte h2{color:#fff;text-shadow:0 0 2px #fff,0 0 10px var(--n2),0 0 24px var(--n2)}
+/* Le damier devient un tube en pointillé */
+body[data-neon="1"] .checker{height:5px;border-radius:99px;opacity:1;background:repeating-linear-gradient(90deg,var(--n1) 0 22px,transparent 22px 34px);
+  box-shadow:0 0 10px var(--n1),0 0 24px var(--n1)}
+/* Le tableau du compte à rebours */
+body[data-neon="1"] .board{background:rgba(6,3,14,.6);border:1px solid var(--n1);box-shadow:0 0 14px var(--n1),inset 0 0 18px color-mix(in srgb,var(--n1) 30%,transparent)}
+body[data-neon="1"] .cell + .cell, body[data-neon="1"] .cell.go{border-color:color-mix(in srgb,var(--n1) 45%,transparent)}
+body[data-neon="1"] .cell .k{color:var(--n2)}
+body[data-neon="1"] .cell .v{color:#fff;text-shadow:0 0 3px #fff,0 0 10px var(--n1),0 0 24px var(--n1)}
+/* Les cartes : du verre sombre avec un contour lumineux, une carte sur deux dans l'autre couleur */
+body[data-neon="1"] .slot, body[data-neon="1"] .profil, body[data-neon="1"] .choix-carte{--nc:var(--n1);
+  background:linear-gradient(160deg,rgba(24,12,40,.92),rgba(8,4,18,.92));color:#f4efff;
+  box-shadow:inset 0 0 0 2px var(--nc),inset 0 0 22px color-mix(in srgb,var(--nc) 25%,transparent),0 0 16px var(--nc),0 0 40px color-mix(in srgb,var(--nc) 45%,transparent)}
+body[data-neon="1"] .slot:nth-child(even), body[data-neon="1"] .profil:nth-child(even), body[data-neon="1"] .choix-carte:nth-child(even){--nc:var(--n2)}
+body[data-neon="1"] .slot::before{background:color-mix(in srgb,var(--nc) 16%,transparent);box-shadow:inset -2px 0 0 var(--nc),6px 0 20px -8px var(--nc)}
+body[data-neon="1"] .profil::before{background:var(--nc);box-shadow:0 0 12px var(--nc)}
+body[data-neon="1"] .pos{--pos-fond:transparent;color:#fff;text-shadow:0 0 3px #fff,0 0 10px var(--nc),0 0 22px var(--nc)}
+body[data-neon="1"] .info h3, body[data-neon="1"] .price, body[data-neon="1"] .choix-t, body[data-neon="1"] .profil .nom{color:#fff;text-shadow:0 0 10px color-mix(in srgb,var(--nc) 60%,transparent)}
+body[data-neon="1"] .profil .nom{color:var(--pseudo-carte-clair, #fff)}
+body[data-neon="1"] .note, body[data-neon="1"] .prio, body[data-neon="1"] .profil .nb, body[data-neon="1"] .choix-d, body[data-neon="1"] .price .approx, body[data-neon="1"] .price.none,
+body[data-neon="1"] .resa-link, body[data-neon="1"] .resa-msg{color:#c9bfe0}
+body[data-neon="1"] .chip, body[data-neon="1"] .chip:nth-child(n){background:transparent;color:var(--nc);box-shadow:inset 0 0 0 1px var(--nc),0 0 8px color-mix(in srgb,var(--nc) 50%,transparent);text-shadow:0 0 6px var(--nc)}
+body[data-neon="1"] .go-btn, body[data-neon="1"] .copier-btn, body[data-neon="1"] .btn.ghost.sur-carte{background:transparent;color:#fff;box-shadow:inset 0 0 0 2px var(--nc),0 0 12px color-mix(in srgb,var(--nc) 60%,transparent)}
+body[data-neon="1"] .go-btn:hover, body[data-neon="1"] .copier-btn:hover{background:color-mix(in srgb,var(--nc) 25%,transparent)}
+body[data-neon="1"] .profil .voir{color:var(--nc);text-shadow:0 0 8px var(--nc)}
+body[data-neon="1"] .resa-btn, body[data-neon="1"] .resa-ok{filter:drop-shadow(0 0 10px color-mix(in srgb,var(--nc) 70%,transparent))}
+body[data-neon="1"] .btn:not(.ghost):not(.deco){box-shadow:0 0 14px var(--n2)}
+/* Arc-en-ciel : les cartes prennent chacune une couleur, et le titre change doucement de teinte */
+body[data-neoncouleur="arcenciel"]{--n1:#ff3df0;--n2:#3df2ff}
+body[data-neoncouleur="arcenciel"] .slot:nth-child(6n+1), body[data-neoncouleur="arcenciel"] .profil:nth-child(6n+1){--nc:#ff3df0}
+body[data-neoncouleur="arcenciel"] .slot:nth-child(6n+2), body[data-neoncouleur="arcenciel"] .profil:nth-child(6n+2){--nc:#ff9a3d}
+body[data-neoncouleur="arcenciel"] .slot:nth-child(6n+3), body[data-neoncouleur="arcenciel"] .profil:nth-child(6n+3){--nc:#ffe23d}
+body[data-neoncouleur="arcenciel"] .slot:nth-child(6n+4), body[data-neoncouleur="arcenciel"] .profil:nth-child(6n+4){--nc:#39ff88}
+body[data-neoncouleur="arcenciel"] .slot:nth-child(6n+5), body[data-neoncouleur="arcenciel"] .profil:nth-child(6n+5){--nc:#3df2ff}
+body[data-neoncouleur="arcenciel"] .slot:nth-child(6n), body[data-neoncouleur="arcenciel"] .profil:nth-child(6n){--nc:#b44dff}
+@media (prefers-reduced-motion:no-preference){
+  /* L'allumage : le néon grésille quelques fois, puis reste allumé et respire */
+  body[data-neon="1"] h1{animation:respire 4s ease-in-out infinite}
+  /* (seulement à l'ouverture de la page : ensuite les néons restent allumés, même quand on clique) */
+  body[data-neon="1"]:not([data-neon-pret]) h1{animation:allumage 1.5s linear 1, respire 4s ease-in-out 1.5s infinite}
+  body[data-neon="1"]:not([data-neon-pret]) .board, body[data-neon="1"]:not([data-neon-pret]) .checker{animation:allumage 1.5s linear .2s 1 backwards}
+  body[data-neon="1"]:not([data-neon-pret]) .slot, body[data-neon="1"]:not([data-neon-pret]) .profil{animation:allumage 1.2s linear 1 backwards}
+  body[data-neon="1"]:not([data-neon-pret]) :is(.slot,.profil):nth-child(2){animation-delay:.15s}
+  body[data-neon="1"]:not([data-neon-pret]) :is(.slot,.profil):nth-child(3){animation-delay:.3s}
+  body[data-neon="1"]:not([data-neon-pret]) :is(.slot,.profil):nth-child(4){animation-delay:.45s}
+  body[data-neon="1"]:not([data-neon-pret]) :is(.slot,.profil):nth-child(n+5){animation-delay:.6s}
+  body[data-neoncouleur="arcenciel"] h1, body[data-neoncouleur="arcenciel"] .checker, body[data-neoncouleur="arcenciel"] .board{animation:arcenciel 8s linear infinite}
+  @keyframes allumage{0%{opacity:0}8%{opacity:.9}10%{opacity:.1}18%{opacity:1}20%{opacity:.3}24%{opacity:1}40%{opacity:.75}42%,100%{opacity:1}}
+  @keyframes respire{50%{text-shadow:0 0 2px #fff,0 0 5px var(--n1),0 0 10px var(--n1),0 0 20px var(--n1),0 0 40px var(--n1),0 0 64px var(--n1)}}
+  @keyframes arcenciel{to{filter:hue-rotate(360deg)}}
+}
 
 /* Les deux options dans « Mes thèmes » */
 .options{display:flex;flex-wrap:wrap;gap:10px}
@@ -578,6 +631,18 @@ const PSEUDOS = {
   orange: { nom: "Orange", clair: "#ffa24d", fonce: "#c25a08" },
 };
 const pseudoDe = t => PSEUDOS[t && t.pseudo] || null;
+// Les couleurs des néons (deux couleurs qui se répondent), à part de la couleur du prénom
+const NEONS = {
+  rose:      { nom: "Rose & cyan",   c: ["#ff3df0", "#3df2ff"] },
+  cyan:      { nom: "Cyan & rose",   c: ["#3df2ff", "#ff3df0"] },
+  violet:    { nom: "Violet",        c: ["#b44dff", "#3dffb4"] },
+  vert:      { nom: "Vert fluo",     c: ["#39ff88", "#ff3d9a"] },
+  or:        { nom: "Or",            c: ["#ffcf3d", "#ff3d5a"] },
+  rouge:     { nom: "Rouge",         c: ["#ff3048", "#3dc8ff"] },
+  bleu:      { nom: "Bleu",          c: ["#3d7bff", "#ffe23d"] },
+  sapin:     { nom: "Sapin & houx",  c: ["#39ff6a", "#ff3048"] },
+  arcenciel: { nom: "Arc-en-ciel",   c: ["#ff3df0", "#ffe23d", "#39ff88", "#3df2ff"] },
+};
 
 // Sur une liste : le thème de son propriétaire. Ailleurs : le sien si on est connecté.
 function appliquerTheme(){
@@ -585,7 +650,11 @@ function appliquerTheme(){
   const b = document.body;
   b.dataset.fond = FONDS[t.fond] ? t.fond : "sapin";
   b.dataset.liste = STYLES_LISTE[t.liste] ? t.liste : "course";
+  // Les néons s'allument (en grésillant) quand ils apparaissent, puis restent allumés
+  if (!t.neon) delete b.dataset.neonPret;
+  else if (b.dataset.neon !== "1"){ delete b.dataset.neonPret; setTimeout(() => { if (b.dataset.neon === "1") b.dataset.neonPret = "1"; }, 2200); }
   b.dataset.neon = t.neon ? "1" : "";
+  b.dataset.neoncouleur = t.neon ? (NEONS[t.neonCouleur] ? t.neonCouleur : "rose") : "";
   b.dataset.sombre = t.sombre ? "1" : "";
   const p = pseudoDe(t), moi = session && pseudoDe(session.profil.theme);
   p ? b.style.setProperty("--pseudo", p.clair) : b.style.removeProperty("--pseudo");
@@ -1434,6 +1503,20 @@ function choixThemes(autre){
   option("neon", "✨ Effets néon");
   option("sombre", "🌙 Mode sombre");
   box.append(op);
+  // Quand les néons sont allumés : leur couleur à eux (indépendante de la couleur du prénom)
+  if (t.neon){
+    box.append(el("h3", null, "Couleur des néons"));
+    const pn = el("div", "pastilles");
+    Object.entries(NEONS).forEach(([id, info]) => {
+      const b = bouton("pastille neon-choix", null, () => changerTheme({...t, neonCouleur: id}));
+      b.setAttribute("aria-pressed", (t.neonCouleur || "rose") === id);
+      const rond = el("span", "rond");
+      rond.style.background = "radial-gradient(circle at 50% 50%, #0b0616 38%, transparent 40%), conic-gradient(" + info.c.concat(info.c[0]).join(",") + ")";
+      rond.style.boxShadow = "0 0 12px " + info.c[0] + ", 0 0 20px " + info.c[1];
+      b.append(rond, info.nom); pn.append(b);
+    });
+    box.append(pn);
+  }
   if (msg.theme) box.append(el("p", msg.err ? "alerte" : "aide", msg.theme));
   return box;
 }
