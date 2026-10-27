@@ -91,20 +91,28 @@ h1 .tree{display:inline-block;transform:skewX(6deg);font-size:.6em;vertical-alig
   background:var(--snow);color:var(--night);border-radius:12px;padding:18px 20px 18px 0;overflow:hidden;
   box-shadow:0 10px 28px rgba(0,0,0,.35)}
 .slot::before{content:"";position:absolute;inset:0 auto 0 0;width:76px;background:var(--band, var(--red))}
-.pos{position:relative;display:grid;place-items:center;font-family:var(--display);font-size:34px;line-height:1;color:var(--snow);transform:skewX(-6deg);
-  text-shadow:0 2px 0 rgba(0,0,0,.4)}
+/* Le numéro (P1, P2…) : sa couleur change avec le style de la liste, pour rester toujours lisible */
+.pos{position:relative;display:grid;place-items:center;font-family:var(--display);font-size:34px;line-height:1;color:var(--pos, var(--snow));transform:skewX(-6deg);
+  text-shadow:var(--pos-ombre, 0 2px 0 rgba(0,0,0,.4));background:var(--pos-fond, transparent);border-radius:10px;margin:0 8px;padding:6px 0}
 
 /* Thèmes de fond (toute la page) : chaque personne choisit le sien pour sa liste */
-body[data-fond="polaire"]{--night:#0b1a33;--night-2:#1d3a66;--panel:#10264a;--line:#2a4a7a;--frost:#a9c3e6}
-body[data-fond="bordeaux"]{--night:#2a0a10;--night-2:#5a1422;--panel:#3a0f17;--line:#6e2633;--frost:#e3b3ba}
-body[data-fond="chocolat"]{--night:#24160f;--night-2:#4a2e1e;--panel:#33201a;--line:#5e3f2c;--frost:#d9bfa8}
-body[data-fond="galaxie"]{--night:#140b2a;--night-2:#3a1f6b;--panel:#1e1240;--line:#3d2a73;--frost:#c3b3ea}
+body[data-fond="sapin"]{--halo:rgba(224,49,63,.16)}
+body[data-fond="polaire"]{--night:#081530;--night-2:#1b3566;--panel:#0e2148;--line:#2a4a7a;--frost:#b9cdee;--halo:rgba(242,195,91,.18)}
+body[data-fond="bordeaux"]{--night:#2c0509;--night-2:#7a111f;--panel:#40080f;--line:#7a2230;--frost:#f0c2c8;--halo:rgba(47,138,95,.22)}
+body[data-fond="chocolat"]{--night:#2a160a;--night-2:#7a4220;--panel:#3a2010;--line:#6e4428;--frost:#f0d2b4;--halo:rgba(242,195,91,.2)}
+body[data-fond="galaxie"]{--night:#06182a;--night-2:#0f5a4e;--panel:#0b2438;--line:#1f5068;--frost:#b5e6dc;--halo:rgba(150,90,220,.28)}
+body[data-fond="minuit"]{--night:#0c0a06;--night-2:#3a2c0c;--panel:#17120a;--line:#4a3a18;--frost:#e8d6a6;--halo:rgba(224,49,63,.16)}
+body{background:radial-gradient(70% 45% at 85% 100%, var(--halo, transparent), transparent 70%) no-repeat fixed, radial-gradient(120% 60% at 50% 0%, var(--night-2), var(--night) 70%) no-repeat, var(--night)}
+html:has(body[data-fond="polaire"]){background:#081530} html:has(body[data-fond="bordeaux"]){background:#2c0509} html:has(body[data-fond="chocolat"]){background:#2a160a}
+html:has(body[data-fond="galaxie"]){background:#06182a} html:has(body[data-fond="minuit"]){background:#0c0a06}
 /* Thèmes de liste (la bande à gauche de chaque cadeau) */
-body[data-liste="dore"], .liste-dore{--band:linear-gradient(180deg,#f7d57a,#c8952f)}
-body[data-liste="sucre"], .liste-sucre{--band:repeating-linear-gradient(-45deg,#e0313f 0 12px,#fff 12px 24px)}
-body[data-liste="glace"], .liste-glace{--band:linear-gradient(180deg,#7fd0ff,#2f7fd6)}
-body[data-liste="foret"], .liste-foret{--band:linear-gradient(180deg,#2f8a5f,#165a3b)}
-.liste-course{--band:var(--red)}
+body[data-liste="course"], .liste-course{--band:linear-gradient(180deg,#ef4250,#9b1522)}
+body[data-liste="dore"], .liste-dore{--band:linear-gradient(180deg,#f7d57a,#c8952f);--pos:#3b2500;--pos-ombre:0 1px 0 rgba(255,255,255,.55)}
+body[data-liste="sucre"], .liste-sucre{--band:repeating-linear-gradient(-45deg,#e0313f 0 12px,#fff 12px 24px);--pos-fond:rgba(122,13,24,.88);--pos-ombre:none}
+body[data-liste="glace"], .liste-glace{--band:linear-gradient(180deg,#dff4ff,#8fd0f5);--pos:#0b2a4a;--pos-ombre:0 1px 0 rgba(255,255,255,.6)}
+body[data-liste="foret"], .liste-foret{--band:linear-gradient(180deg,#2f8a5f,#145236)}
+body[data-liste="pull"], .liste-pull{--band:repeating-linear-gradient(135deg,transparent 0 8px,rgba(255,255,255,.9) 8px 10px,transparent 10px 18px),repeating-linear-gradient(45deg,#c8202f 0 8px,#a3121f 8px 18px);--pos-fond:rgba(90,8,16,.85);--pos-ombre:none}
+body[data-liste="houx"], .liste-houx{--band:radial-gradient(circle at 30% 30%,#ff3b4a 0 4px,transparent 5px) 0 0/22px 22px,radial-gradient(circle at 70% 70%,#ff3b4a 0 3px,transparent 4px) 0 0/22px 22px,linear-gradient(180deg,#1f6e45,#0f3f27);--pos-fond:rgba(10,40,24,.8);--pos-ombre:none}
 .pos small{display:block;font-family:var(--label);font-size:12px;letter-spacing:.2em;transform:none;opacity:.85}
 .info{display:grid;gap:6px;min-width:0}
 .info h3{margin:0;font-family:var(--label);font-weight:700;font-size:23px;line-height:1.15;letter-spacing:.01em;overflow-wrap:anywhere}
@@ -327,6 +335,7 @@ footer small{color:var(--frost);font-size:14px}
 const $ = s => document.querySelector(s);
 const SEED = (typeof LISTE !== "undefined" && LISTE) || null; // l'ancienne liste d'Oscar, pour l'importer ou la montrer hors ligne
 let session = lireSession();      // { token, profil: { id, prenom } } quand on est connecté
+if (session) ecrireSession(session); // retient sur ce téléphone que cette liste est la sienne
 let invite = lireInvite();        // true quand on a choisi « Mode invité »
 let vueApres = null;              // la liste demandée avant l'écran d'entrée (lien partagé)
 let cible = null;                 // la liste qu'on modifie : la sienne, ou celle d'un autre pour l'admin
@@ -353,7 +362,14 @@ function bouton(cls, texte, onclick){ const b = el("button", cls, texte); b.type
 function lireSession(){ try{ return JSON.parse(localStorage.getItem("session")) || null; }catch{ return null; } }
 function lireInvite(){ try{ return localStorage.getItem("invite") === "1"; }catch{ return false; } }
 function choisirInvite(oui){ invite = oui; try{ oui ? localStorage.setItem("invite", "1") : localStorage.removeItem("invite"); }catch{} }
-function ecrireSession(s){ session = s; try{ s ? localStorage.setItem("session", JSON.stringify(s)) : localStorage.removeItem("session"); }catch{} }
+function ecrireSession(s){
+  session = s;
+  try{ s ? localStorage.setItem("session", JSON.stringify(s)) : localStorage.removeItem("session"); }catch{}
+  if (s && !mesListes().includes(s.profil.id)) try{ localStorage.setItem("mesListes", JSON.stringify([...mesListes(), s.profil.id])); }catch{}
+}
+// Les listes de ce téléphone : même déconnecté (mode invité), on ne montre jamais les réservations de sa propre liste
+function mesListes(){ try{ const l = JSON.parse(localStorage.getItem("mesListes") || "[]"); return Array.isArray(l) ? l : []; }catch{ return []; } }
+function estMaListe(id){ return !!id && ((session && session.profil.id === id) || mesListes().includes(id)); }
 
 async function api(chemin, options = {}){
   const headers = {"Content-Type": "application/json"};
@@ -435,19 +451,23 @@ function demo(){
 
 /* ---------- Affichage ---------- */
 /* ---------- Thèmes ---------- */
+// (les noms des clés restent les mêmes qu'avant : les thèmes déjà choisis gardent leur place)
 const FONDS = {
-  sapin:    { nom: "Sapin",    couleurs: ["#123a2f", "#0a231c"] },
-  polaire:  { nom: "Polaire",  couleurs: ["#1d3a66", "#0b1a33"] },
-  bordeaux: { nom: "Bordeaux", couleurs: ["#5a1422", "#2a0a10"] },
-  chocolat: { nom: "Chocolat", couleurs: ["#4a2e1e", "#24160f"] },
-  galaxie:  { nom: "Galaxie",  couleurs: ["#3a1f6b", "#140b2a"] },
+  sapin:    { nom: "Sapin",           couleurs: ["#123a2f", "#0a231c"] },
+  polaire:  { nom: "Nuit étoilée",    couleurs: ["#1b3566", "#081530"] },
+  bordeaux: { nom: "Rouge Noël",      couleurs: ["#7a111f", "#2c0509"] },
+  chocolat: { nom: "Pain d'épices",   couleurs: ["#7a4220", "#2a160a"] },
+  galaxie:  { nom: "Aurore boréale",  couleurs: ["#0f5a4e", "#06182a"] },
+  minuit:   { nom: "Minuit doré",     couleurs: ["#3a2c0c", "#0c0a06"] },
 };
 const STYLES_LISTE = {
-  course: { nom: "Course",       apercu: "#e0313f" },
+  course: { nom: "Rouge Noël",   apercu: "linear-gradient(180deg,#ef4250,#9b1522)" },
   dore:   { nom: "Doré",         apercu: "linear-gradient(180deg,#f7d57a,#c8952f)" },
   sucre:  { nom: "Sucre d'orge", apercu: "repeating-linear-gradient(-45deg,#e0313f 0 8px,#fff 8px 16px)" },
-  glace:  { nom: "Glace",        apercu: "linear-gradient(180deg,#7fd0ff,#2f7fd6)" },
-  foret:  { nom: "Forêt",        apercu: "linear-gradient(180deg,#2f8a5f,#165a3b)" },
+  glace:  { nom: "Flocon",       apercu: "linear-gradient(180deg,#dff4ff,#8fd0f5)" },
+  foret:  { nom: "Sapin",        apercu: "linear-gradient(180deg,#2f8a5f,#145236)" },
+  pull:   { nom: "Pull de Noël", apercu: "repeating-linear-gradient(135deg,transparent 0 6px,rgba(255,255,255,.9) 6px 8px,transparent 8px 14px),repeating-linear-gradient(45deg,#c8202f 0 6px,#a3121f 6px 14px)" },
+  houx:   { nom: "Houx",         apercu: "radial-gradient(circle at 30% 30%,#ff3b4a 0 4px,transparent 5px) 0 0/18px 18px,linear-gradient(180deg,#1f6e45,#0f3f27)" },
 };
 // Sur une liste : le thème de son propriétaire. Ailleurs : le sien si on est connecté.
 function appliquerTheme(){
@@ -554,7 +574,9 @@ function vueListe(main){
     if (enLigne === false) hors_ligne(main);
     return;
   }
-  const proprio = session && session.profil.id === liste.id;
+  const proprio = estMaListe(liste.id);
+  // C'est la surprise : sur sa propre liste, on ne voit jamais ce qui est réservé
+  if (proprio) liste.reservations = null;
   entete("La liste " + de(liste.prenom), proprio
     ? "C'est ta liste. Les réservations sont cachées pour te garder la surprise."
     : "Clique sur « Je l'offre » pour réserver un cadeau : les autres verront qu'il est déjà pris.");
@@ -564,7 +586,7 @@ function vueListe(main){
   const bar = el("div", "bar"), t = el("div");
   t.append(el("h2", null, "Grille de départ"), el("p", null, "Du plus cher au moins cher."));
   bar.append(t);
-  if (proprio) bar.append(lien("#ma-liste", "btn", "✏️ Modifier ma liste"));
+  if (proprio && session && session.profil.id === liste.id) bar.append(lien("#ma-liste", "btn", "✏️ Modifier ma liste"));
   main.append(bar);
   if (estAdmin() && !proprio && !liste.demo) main.append(outilsAdmin());
   const ol = el("ol", "grid");

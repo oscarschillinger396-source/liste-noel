@@ -1,10 +1,3 @@
-// Enregistre les cadeaux réservés, pour que tout le monde voie la même chose.
-// Netlify range les données dans "Netlify Blobs" : rien à configurer.
-
-// Le serveur du site : les profils (prénom + code), les listes de chacun et les réservations.
-// Le serveur du site : les profils (prénom + code), les listes de chacun et les réservations.
-// Le serveur du site : les profils (prénom + code), les listes de chacun, leurs thèmes et les réservations.
-// Le serveur du site : les profils (prénom + code), les listes de chacun, leurs thèmes et les réservations.
 // Le serveur du site : les profils (prénom + mot de passe), les listes de chacun et les réservations.
 // Netlify range tout dans "Netlify Blobs" : rien à configurer.
 //
@@ -21,8 +14,8 @@ import { scryptSync, randomBytes, timingSafeEqual, createHmac } from "node:crypt
 const ADMINS = ["oscar"];
 const MAX_PROFILS = 30;
 // Les thèmes qu'on peut choisir pour sa liste : le fond de la page, et le style des cartes
-const FONDS = ["sapin", "polaire", "bordeaux", "chocolat", "galaxie"];
-const STYLES_LISTE = ["course", "dore", "sucre", "glace", "foret"];
+const FONDS = ["sapin", "polaire", "bordeaux", "chocolat", "galaxie", "minuit"];
+const STYLES_LISTE = ["course", "dore", "sucre", "glace", "foret", "pull", "houx"];
 const themeDe = p => ({ fond: FONDS.includes(p?.theme?.fond) ? p.theme.fond : "sapin",
   liste: STYLES_LISTE.includes(p?.theme?.liste) ? p.theme.liste : "course" });
 const MAX_CADEAUX = 60;
@@ -105,8 +98,8 @@ function optionsDansLien(u){
     const v = decodeURIComponent(String(valeur || "")).replace(/[-_+]/g, " ").trim();
     if (!v) return;
     const k = cle.toLowerCase();
-    if (/^(couleur|color|colour|coloris)$/.test(k)) options.couleur = v;
-    else if (/^(taille|size|pointure)$/.test(k)) options.taille = v;
+    if (/^(couleur|color|colour|coloris|colorname)$/.test(k)) options.couleur = v;
+    else if (/^(taille|size|pointure|sizename|shoesize|size_name)$/.test(k)) options.taille = v;
   };
   for (const morceau of u.hash.split("/")){
     const m = morceau.match(/^\d+-([a-zA-Z]+)-(.+)$/);
@@ -170,6 +163,36 @@ function texteDeHtml(html){
     .replace(/&amp;/g, "&").replace(/&#0?39;|&apos;|&rsquo;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">")
     .replace(/&eacute;/g, "é").replace(/&egrave;/g, "è").replace(/&agrave;/g, "à").replace(/&ccedil;/g, "ç").replace(/&ecirc;/g, "ê")
     .replace(/&#(\d+);/g, (t, n) => String.fromCharCode(+n));
+}
+
+// La taille et la couleur choisies sur la page : Amazon (« Taille : M » au-dessus des boutons),
+// les données « produit » (« size », « color »), ou une ligne « Taille : 42 » / « Couleur : Noir » dans la page
+function optionsDansPage(html, texte){
+  const options = {};
+  const propre = v => String(v || "").replace(/&nbsp;|\s+/g, " ").trim();
+  const ok = v => v && v.length <= 25 && !/guide|choisir|s[ée]lectionn|tableau|disponible|^taille|^couleur|^voir/i.test(v);
+  for (const [cle, amazon] of [["taille", "size_name"], ["couleur", "color_name"]]){
+    const m = html.match(new RegExp('id=["\'](?:inline-twister-expanded-dimension-text-' + amazon + '|variation_' + amazon + ')["\'][\\s\\S]{0,600}?class=["\'][^"\']*selection[^"\']*["\'][^>]*>\\s*([^<]{1,30})<', "i"))
+      || html.match(new RegExp('id=["\']inline-twister-expanded-dimension-text-' + amazon + '["\'][^>]*>\\s*([^<]{1,30})<', "i"));
+    if (m && ok(propre(m[1]))) options[cle] = propre(m[1]);
+  }
+  for (const bloc of html.matchAll(/<script[^>]*application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi)){
+    try{
+      const produits = [JSON.parse(bloc[1].trim())].flat(3).flatMap(o => o && o["@graph"] ? o["@graph"] : [o]);
+      for (const p of produits){
+        if (!p || !/Product/i.test([].concat(p["@type"] || []).join(" "))) continue;
+        const taille = propre(typeof p.size === "object" ? p.size?.name : p.size);
+        const couleur = propre(p.color);
+        if (!options.taille && ok(taille)) options.taille = taille;
+        if (!options.couleur && ok(couleur)) options.couleur = couleur;
+      }
+    }catch{}
+  }
+  const t = texte.match(/(?:taille|pointure)(?: s[ée]lectionn[ée]e| choisie)?\s*:\s*([^\n,|:]{1,12})/i);
+  if (!options.taille && t && ok(propre(t[1]))) options.taille = propre(t[1]);
+  const c = texte.match(/(?:couleur|coloris)(?: s[ée]lectionn[ée]e)?\s*:\s*([^\n,|:]{1,25})/i);
+  if (!options.couleur && c && ok(propre(c[1]))) options.couleur = propre(c[1]);
+  return options;
 }
 
 // Une page « Vérifiez que vous n'êtes pas un robot » au lieu du produit
@@ -308,8 +331,13 @@ async function apercu(lien){
     // Le site refuse les robots : on le dit, et on n'insiste pas
     if (!r.ok || !html || pageBloquee(html)){ resultat.bloque = true; return resultat; }
     // 1. les données « produit » cachées dans la page, 2. le prix d'Amazon, 3. la page lue comme du texte
-    resultat.prix = prixDansPage(html) || prixAmazon(html) || prixDansTexte(texteDeHtml(html)).prix || null;
+    const texte = texteDeHtml(html);
+    resultat.prix = prixDansPage(html) || prixAmazon(html) || prixDansTexte(texte).prix || null;
     resultat.nom = nomDansPage(html);
+    // La taille et la couleur écrites dans le lien passent en premier (c'est ce que tu as choisi)
+    const page = optionsDansPage(html, texte);
+    resultat.taille = resultat.taille || page.taille;
+    resultat.couleur = resultat.couleur || page.couleur;
   }catch{ resultat.bloque = true; }
   return resultat;
 }
@@ -434,4 +462,3 @@ export default async (req) => {
 };
 
 export const config = { path: "/api/*" };
-
