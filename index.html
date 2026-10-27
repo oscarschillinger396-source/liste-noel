@@ -606,9 +606,21 @@ try{ localStorage.removeItem("aUnCompte"); }catch{}
 function estMaListe(id){ return !!id && !!session && session.profil.id === id; }
 try{ localStorage.removeItem("mesListes"); }catch{}
 
+// Une clé secrète propre à ce téléphone, pour les invités : seul le téléphone qui a réservé en invité peut annuler
+function cleInvite(){
+  try{
+    let c = localStorage.getItem("cleInvite");
+    if (!/^[a-f0-9]{32}$/.test(c || "")){
+      c = [...crypto.getRandomValues(new Uint8Array(16))].map(x => x.toString(16).padStart(2, "0")).join("");
+      localStorage.setItem("cleInvite", c);
+    }
+    return c;
+  }catch{ return ""; }
+}
 async function api(chemin, options = {}){
   const headers = {"Content-Type": "application/json"};
   if (session) headers.Authorization = "Bearer " + session.token;
+  else { const c = cleInvite(); if (c) headers["X-Invite"] = c; }
   const r = await fetch("/api/" + chemin, {method: options.method || "GET", headers, cache: "no-store",
     body: options.body ? JSON.stringify(options.body) : undefined});
   let data = null;

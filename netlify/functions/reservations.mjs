@@ -8,7 +8,8 @@
 //   POST /api/inscription                → créer son profil
 //   POST /api/connexion                  → se connecter
 import { getStore } from "@netlify/blobs";
-import { scryptSync, randomBytes, timingSafeEqual, createHmac } from "node:crypto";
+import { scryptSync, randomBytes, timingSafeEqual, createHmac, createHash } from "node:crypto";
+import { lookup } from "node:dns/promises";
 
 // Les profils admin peuvent modifier ou supprimer toutes les listes, et donner un nouveau code
 const ADMINS = ["oscar"];
@@ -28,7 +29,11 @@ const themeDe = p => ({ fond: FONDS.includes(p?.theme?.fond) ? p.theme.fond : "s
   neon: p?.theme?.neon === true, neonCouleur: NEONS.includes(p?.theme?.neonCouleur) ? p.theme.neonCouleur : "rose",
   sombre: p?.theme?.sombre === true, deco: DECOS.includes(p?.theme?.deco) ? p.theme.deco : "aucune" });
 const MAX_CADEAUX = 60;
-const DUREE_SESSION = 60 * 24 * 3600 * 1000; // 60 jours
+// Le site déconnecte déjà à la fermeture de l'onglet : un jeton volé ne sert donc pas plus d'une journée
+const DUREE_SESSION = 24 * 3600 * 1000;
+// Contre ceux qui essaient tous les codes : après 5 erreurs, le compte est bloqué 15 minutes, puis 1 heure à chaque nouvelle erreur
+const ESSAIS_MAX = 5, BLOCAGE = 15 * 60 * 1000, BLOCAGE_LONG = 60 * 60 * 1000;
+const MDP_MAX = 64;
 
 // Listes déjà prêtes : quand ce prénom crée son profil, sa liste est remplie tout de suite
 const LISTES_DE_DEPART = {
@@ -70,15 +75,25 @@ function verifier(sec, token){
   if (sig.length !== attendu.length || !timingSafeEqual(Buffer.from(sig), Buffer.from(attendu))) return null;
   try{
     const p = JSON.parse(Buffer.from(b, "base64url").toString());
-    return p.exp > Date.now() ? p : null;
+    return typeof p.id === "string" && p.exp > Date.now() ? p : null;
   }catch{ return null; }
 }
 const hacher = (mdp, sel) => scryptSync(String(mdp), sel, 32).toString("hex");
 
-async function qui(req, s){
+// La personne connectée, si son jeton est bon, que son profil existe encore et que son code n'a pas été changé depuis
+// (quand l'admin donne un nouveau code, « v » augmente : les anciennes connexions ne marchent plus)
+async function qui(req, s, profils){
   const t = (req.headers.get("authorization") || "").replace(/^Bearer /, "");
-  return t ? verifier(await secret(s), t) : null;
+  const j = t ? verifier(await secret(s), t) : null;
+  return j && Object.hasOwn(profils, j.id) && (profils[j.id].v || 0) === (j.v || 0) ? j : null;
 }
+// La clé d'un invité (envoyée par son téléphone), gardée hachée : personne ne peut la relire
+function cleInvite(req){
+  const c = req.headers.get("x-invite") || "";
+  return /^[a-f0-9]{32}$/.test(c) ? createHash("sha256").update(c).digest("hex").slice(0, 32) : null;
+}
+// Ce qu'on renvoie d'une réservation : juste qu'elle existe, jamais qui l'a faite
+const sansNoms = resa => Object.fromEntries(Object.entries(resa).map(([k, r]) => [k, { le: r.le }]));
 
 // Garde seulement les champs connus, avec des tailles raisonnables
 function nettoyerCadeau(c){
@@ -321,10 +336,45 @@ function prixDansTexte(texte){
 // Refuse les adresses internes (sécurité : le serveur ne va lire que de vrais sites web)
 function lienAutorise(u){
   if (u.protocol !== "https:" && u.protocol !== "http:") return false;
+  if (u.username || u.password || (u.port && u.port !== "80" && u.port !== "443")) return false;
   const h = u.hostname.toLowerCase();
-  if (h === "localhost" || h.endsWith(".local") || h.endsWith(".internal") || !h.includes(".")) return false;
-  if (/^[\d.]+$/.test(h) || h.includes(":")) return false; // pas d'adresse IP
+  if (h === "localhost" || h.endsWith(".local") || h.endsWith(".internal") || h.endsWith(".localhost") || !h.includes(".")) return false;
+  if (/^[\d.]+$/.test(h) || h.includes(":") || h.startsWith("[")) return false; // pas d'adresse IP
   return true;
+}
+// Une adresse IP privée (réseau interne, la machine elle-même…)
+function ipPrivee(ip){
+  if (ip.includes(":")){
+    const v = ip.toLowerCase();
+    if (v.startsWith("::ffff:")) return ipPrivee(v.slice(7));
+    return v === "::" || v === "::1" || /^(fc|fd|fe8|fe9|fea|feb)/.test(v);
+  }
+  const [a, b] = ip.split(".").map(Number);
+  return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31)
+    || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || a >= 224;
+}
+// Le nom du site doit mener à une vraie adresse sur internet, pas à une machine interne
+async function hoteSur(u){
+  if (!lienAutorise(u)) return false;
+  try{
+    const ips = await lookup(u.hostname, { all: true });
+    return ips.length > 0 && ips.every(x => !ipPrivee(x.address));
+  }catch{ return false; }
+}
+// On suit les redirections nous-mêmes (5 au plus), en vérifiant chaque nouvelle adresse
+async function lirePage(u){
+  for (let i = 0; i < 6; i++){
+    if (!(await hoteSur(u))) return null;
+    const r = await fetch(u.href, { redirect: "manual", signal: AbortSignal.timeout(7000), headers: {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+      "Accept": "text/html", "Accept-Language": "fr-FR,fr;q=0.9" } });
+    if (r.status >= 300 && r.status < 400 && r.headers.get("location")){
+      try{ u = new URL(r.headers.get("location"), u); }catch{ return null; }
+      continue;
+    }
+    return r;
+  }
+  return null;
 }
 
 async function apercu(lien){
@@ -333,12 +383,10 @@ async function apercu(lien){
   if (!lienAutorise(u)) return { erreur: "Ce lien n'est pas valide." };
   const resultat = { ...optionsDansLien(u) };
   try{
-    const r = await fetch(u.href, { redirect: "follow", signal: AbortSignal.timeout(7000), headers: {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-      "Accept": "text/html", "Accept-Language": "fr-FR,fr;q=0.9" } });
-    const html = /html/i.test(r.headers.get("content-type") || "") ? (await r.text()).slice(0, 2000000) : "";
+    const r = await lirePage(u);
+    const html = r && /html/i.test(r.headers.get("content-type") || "") ? (await r.text()).slice(0, 2000000) : "";
     // Le site refuse les robots : on le dit, et on n'insiste pas
-    if (!r.ok || !html || pageBloquee(html)){ resultat.bloque = true; return resultat; }
+    if (!r || !r.ok || !html || pageBloquee(html)){ resultat.bloque = true; return resultat; }
     // 1. les données « produit » cachées dans la page, 2. le prix d'Amazon, 3. la page lue comme du texte
     const texte = texteDeHtml(html);
     resultat.prix = prixDansPage(html) || prixAmazon(html) || prixDansTexte(texte).prix || null;
@@ -357,8 +405,10 @@ export default async (req) => {
   let body = {};
   if (req.method === "POST" || req.method === "PUT"){
     try{ body = await req.json(); }catch{ return erreur("Requête invalide"); }
+    if (!body || typeof body !== "object" || Array.isArray(body)) return erreur("Requête invalide");
   }
-  const profils = (await s.get("profils", { type: "json" })) || {};
+  // (objet sans prototype : un prénom comme « constructor » ou « __proto__ » ne peut rien casser)
+  const profils = Object.assign(Object.create(null), (await s.get("profils", { type: "json" })) || {});
 
   // Inscription et connexion
   if (req.method === "POST" && (chemin[0] === "inscription" || chemin[0] === "connexion")){
@@ -366,6 +416,7 @@ export default async (req) => {
     const id = slug(prenom), mdp = String(body.motdepasse || "");
     if (!id) return erreur("Écris ton prénom.");
     if (mdp.length < 4) return erreur("Le code doit faire au moins 4 chiffres.");
+    if (mdp.length > MDP_MAX) return erreur("Ce code est trop long.");
     if (chemin[0] === "inscription"){
       if (profils[id]) return erreur("Ce prénom a déjà une liste. Connecte-toi plutôt.", 409);
       if (Object.keys(profils).length >= MAX_PROFILS) return erreur("Il y a déjà trop de listes sur le site.");
@@ -377,17 +428,35 @@ export default async (req) => {
       }
     } else {
       const p = profils[id];
+      // Compte bloqué après trop d'erreurs
+      const essais = (await s.get("essais", { type: "json" })) || {};
+      const e = Object.hasOwn(essais, id) ? essais[id] : { n: 0, jusqu: 0 };
+      if (e.jusqu > Date.now()){
+        const min = Math.ceil((e.jusqu - Date.now()) / 60000);
+        return erreur(`Trop d'essais ratés. Réessaie dans ${min} minute${min > 1 ? "s" : ""}.`, 429);
+      }
       const ok = p && timingSafeEqual(Buffer.from(hacher(mdp, p.sel), "hex"), Buffer.from(p.hash, "hex"));
-      if (!ok){ await new Promise(r => setTimeout(r, 800)); return erreur("Ce n'est pas le bon code. Réessaie.", 401); }
+      if (!ok){
+        if (p){
+          e.n++;
+          if (e.n >= ESSAIS_MAX) e.jusqu = Date.now() + (e.n === ESSAIS_MAX ? BLOCAGE : BLOCAGE_LONG);
+          essais[id] = e; await s.setJSON("essais", essais);
+        }
+        await new Promise(r => setTimeout(r, 800));
+        const reste = ESSAIS_MAX - e.n;
+        return erreur(reste > 0 && reste <= 2 ? `Ce n'est pas le bon code. Encore ${reste} essai${reste > 1 ? "s" : ""} avant le blocage.`
+          : e.n >= ESSAIS_MAX ? "Ce n'est pas le bon code. Trop d'essais : le compte est bloqué un moment." : "Ce n'est pas le bon code. Réessaie.", 401);
+      }
+      if (e.n){ delete essais[id]; await s.setJSON("essais", essais); }
     }
-    const token = signer(await secret(s), { id, exp: Date.now() + DUREE_SESSION });
+    const token = signer(await secret(s), { id, v: profils[id].v || 0, exp: Date.now() + DUREE_SESSION });
     return json({ token, profil: { id, prenom: profils[id].prenom, admin: ADMINS.includes(id), theme: themeDe(profils[id]) } });
   }
 
   // Aperçu d'un lien de produit (seulement pour les personnes connectées)
   if (req.method === "POST" && chemin[0] === "apercu"){
-    const moi = await qui(req, s);
-    if (!moi || !profils[moi.id]) return erreur("Connecte-toi pour utiliser cette fonction.", 401);
+    const moi = await qui(req, s, profils);
+    if (!moi) return erreur("Connecte-toi pour utiliser cette fonction.", 401);
     const r = await apercu(body.lien);
     return r.erreur ? erreur(r.erreur) : json(r);
   }
@@ -405,11 +474,11 @@ export default async (req) => {
 
   const id = chemin[1];
   if (!profils[id]) return erreur("Cette liste n'existe pas.", 404);
-  const jeton = await qui(req, s);
-  const moi = jeton && profils[jeton.id] ? jeton : null;
+  const moi = await qui(req, s, profils);
+  const invite = moi ? null : cleInvite(req);
   // C'est la surprise : les personnes connectées à leur compte ne voient que leurs propres réservations.
-  // Seuls les invités (les parents…) voient tout, pour s'organiser.
-  const visibles = resa => moi ? Object.fromEntries(Object.entries(resa).filter(([, r]) => r.par === moi.id)) : resa;
+  // Seuls les invités (les parents…) voient tout, pour s'organiser. Et personne ne voit qui a réservé.
+  const visibles = resa => sansNoms(moi ? Object.fromEntries(Object.entries(resa).filter(([, r]) => r.par === moi.id)) : resa);
   const proprietaire = moi && moi.id === id;
   const admin = !!(moi && ADMINS.includes(moi.id) && profils[moi.id]);
 
@@ -429,9 +498,14 @@ export default async (req) => {
     if (!admin) return erreur("Seul l'admin peut changer le code des autres.", 403);
     const mdp = String(body.motdepasse || "");
     if (mdp.length < 4) return erreur("Le code doit faire au moins 4 chiffres.");
+    if (mdp.length > MDP_MAX) return erreur("Ce code est trop long.");
     const sel = randomBytes(16).toString("hex");
-    profils[id] = { ...profils[id], sel, hash: hacher(mdp, sel) };
+    // « v » augmente : la personne est déconnectée partout où elle l'était avec l'ancien code
+    profils[id] = { ...profils[id], sel, hash: hacher(mdp, sel), v: (profils[id].v || 0) + 1 };
     await s.setJSON("profils", profils);
+    // et le blocage pour trop d'essais est levé
+    const essais = (await s.get("essais", { type: "json" })) || {};
+    if (Object.hasOwn(essais, id)){ delete essais[id]; await s.setJSON("essais", essais); }
     return json({ ok: true });
   }
 
@@ -464,14 +538,17 @@ export default async (req) => {
     const cadeaux = (await s.get("liste-" + id, { type: "json" })) || [];
     if (!cadeaux.some(c => c.id === body.cadeau)) return erreur("Ce cadeau n'existe plus.", 404);
     const resa = (await s.get("resa-" + id, { type: "json" })) || {};
-    const deja = resa[body.cadeau];
+    const deja = Object.hasOwn(resa, body.cadeau) ? resa[body.cadeau] : null;
+    // C'est à moi : réservé avec mon compte, ou en invité depuis ce téléphone
+    const aMoi = r => !!r && ((moi && r.par === moi.id) || (!moi && !!invite && r.inv === invite));
     if (body.action === "reserver"){
       // Quelqu'un d'autre l'a déjà pris (la personne connectée ne pouvait pas le voir) : on le dit
-      if (deja && !(moi && deja.par === moi.id)) return erreur("Ce cadeau est déjà réservé par quelqu'un d'autre. Choisis-en un autre !", 409);
-      resa[body.cadeau] = deja || { le: new Date().toISOString(), ...(moi ? { par: moi.id } : {}) };
+      if (deja && !aMoi(deja)) return erreur("Ce cadeau est déjà réservé par quelqu'un d'autre. Choisis-en un autre !", 409);
+      resa[body.cadeau] = deja || { le: new Date().toISOString(), ...(moi ? { par: moi.id } : invite ? { inv: invite } : {}) };
     } else if (body.action === "annuler"){
-      // Une personne connectée ne peut annuler que ce qu'elle a réservé elle-même
-      if (deja && moi && deja.par !== moi.id) return erreur("Tu ne peux annuler que tes propres réservations.", 403);
+      // On ne peut annuler que ce qu'on a réservé soi-même (avec son compte, ou depuis le même téléphone en invité).
+      // Les anciennes réservations d'invités, faites avant cette règle, restent annulables par les invités.
+      if (deja && !aMoi(deja) && !(!moi && !deja.par && !deja.inv)) return erreur("Tu ne peux annuler que tes propres réservations.", 403);
       delete resa[body.cadeau];
     } else return erreur("Action inconnue");
     await s.setJSON("resa-" + id, resa);

@@ -1,3 +1,51 @@
 [build]
   publish = "."
   functions = "netlify/functions"
+
+# Les fichiers du dépôt qui ne sont pas le site : personne ne doit pouvoir les télécharger
+# (le code du serveur, les notes…)
+[[redirects]]
+  from = "/netlify/*"
+  to = "/404"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/police/*"
+  to = "/404"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/README.md"
+  to = "/404"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/resultats-tests-prix.md"
+  to = "/404"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/package.json"
+  to = "/404"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/netlify.toml"
+  to = "/404"
+  status = 404
+  force = true
+
+# Les protections du navigateur
+[[headers]]
+  for = "/*"
+  [headers.values]
+    # La page ne peut charger que ses propres fichiers (et la police Google) : un script venu d'ailleurs est bloqué
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; media-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+    # Personne ne peut afficher le site caché dans une autre page (pour piéger un clic)
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    # Quand on clique sur un lien de cadeau, la boutique ne voit pas l'adresse de la liste
+    Referrer-Policy = "no-referrer"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+    Strict-Transport-Security = "max-age=31536000"
+    Cross-Origin-Opener-Policy = "same-origin"
