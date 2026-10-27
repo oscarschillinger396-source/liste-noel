@@ -5,6 +5,15 @@
 // Le serveur du site : les profils (prénom + code), les listes de chacun et les réservations.
 // Le serveur du site : les profils (prénom + code), les listes de chacun, leurs thèmes et les réservations.
 // Le serveur du site : les profils (prénom + code), les listes de chacun, leurs thèmes et les réservations.
+// Le serveur du site : les profils (prénom + mot de passe), les listes de chacun et les réservations.
+// Netlify range tout dans "Netlify Blobs" : rien à configurer.
+//
+//   GET  /api/listes                     → toutes les listes (prénom + nombre de cadeaux)
+//   GET  /api/listes/:id                 → une liste, avec ses réservations (cachées à son propriétaire)
+//   PUT  /api/listes/:id/cadeaux         → remplacer ses cadeaux (propriétaire connecté seulement)
+//   POST /api/listes/:id/reservations    → réserver ou annuler un cadeau (tout le monde sauf le propriétaire)
+//   POST /api/inscription                → créer son profil
+//   POST /api/connexion                  → se connecter
 import { getStore } from "@netlify/blobs";
 import { scryptSync, randomBytes, timingSafeEqual, createHmac } from "node:crypto";
 
@@ -17,8 +26,9 @@ const STYLES_LISTE = ["course", "dore", "sucre", "glace", "foret"];
 const themeDe = p => ({ fond: FONDS.includes(p?.theme?.fond) ? p.theme.fond : "sapin",
   liste: STYLES_LISTE.includes(p?.theme?.liste) ? p.theme.liste : "course" });
 const MAX_CADEAUX = 60;
-const DUREE_SESSION = 60 * 24 * 3600 * 1000;
+const DUREE_SESSION = 60 * 24 * 3600 * 1000; // 60 jours
 
+// Listes déjà prêtes : quand ce prénom crée son profil, sa liste est remplie tout de suite
 const LISTES_DE_DEPART = {
   oscar: [
     { nom: "Combinaison OMP KS-3X", prix: 226.8, precisions: "Taille 46",
@@ -38,7 +48,8 @@ const store = () => getStore({ name: "noel", consistency: "strong" });
 const json = (data, status = 200) => Response.json(data, { status });
 const erreur = (message, status = 400) => json({ erreur: message }, status);
 
-const slug = s => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+// « Élodie » → « elodie »
+const slug = s => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
   .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30);
 
 async function secret(s){
@@ -67,6 +78,7 @@ async function qui(req, s){
   return t ? verifier(await secret(s), t) : null;
 }
 
+// Garde seulement les champs connus, avec des tailles raisonnables
 function nettoyerCadeau(c){
   const nom = String(c?.nom || "").trim().slice(0, 120);
   if (!nom) return null;
@@ -86,6 +98,7 @@ function nettoyerCadeau(c){
 // ---------- Aperçu d'un lien : on lit la page du produit pour trouver le nom, le prix, la taille et la couleur ----------
 
 // Taille et couleur écrites dans l'adresse, par exemple « #/172-couleur-noir/398-taille-45 » (Itaka)
+// ou « ?size=M&color=noir »
 function optionsDansLien(u){
   const options = {};
   const noter = (cle, valeur) => {
@@ -119,7 +132,8 @@ function chercherPrix(o){
   if (!o || typeof o !== "object") return null;
   if (Array.isArray(o)){ for (const x of o){ const p = chercherPrix(x); if (p) return p; } return null; }
   if (o.offers){
-    for (const off of [].concat(o.offers)){ const p = nombre(off.price ?? off.lowPrice); if (p) return p; }
+    const offres = [].concat(o.offers);
+    for (const off of offres){ const p = nombre(off.price ?? off.lowPrice); if (p) return p; }
   }
   for (const v of Object.values(o)){ const p = chercherPrix(v); if (p) return p; }
   return null;
@@ -131,7 +145,145 @@ function nombre(x){
 function nomDansPage(html){
   const m = html.match(/<meta[^>]+property=["']og:title["'][^>]*content=["']([^"']+)["']/i) || html.match(/<title[^>]*>([^<]+)<\/title>/i);
   if (!m) return null;
-  return m[1].replace(/&amp;/g, "&").replace(/&#0?39;|&apos;/g, "'").replace(/&quot;/g, '"').split(/\s[|–-]\s/)[0].trim().slice(0, 120) || null;
+  // (on garde tout : le site raccourcit ensuite le nom lui-même)
+  return m[1].replace(/&amp;/g, "&").replace(/&#0?39;|&apos;/g, "'").replace(/&quot;/g, '"')
+    .replace(/\s*:\s*Amazon\.fr.*$/i, "").replace(/^Amazon\.fr\s*:\s*/i, "").trim().slice(0, 200) || null;
+}
+
+// Amazon ne met pas ses prix dans les données « produit » : ils sont dans <span class="a-offscreen">119,99 €</span>
+function prixAmazon(html){
+  const zone = html.match(/id=["'](?:corePriceDisplay_desktop_feature_div|corePrice_feature_div|corePrice_desktop|apex_desktop)["'][\s\S]{0,6000}/i);
+  const m = zone && zone[0].match(/class=["'][^"']*a-offscreen[^"']*["'][^>]*>\s*([\d\s., ]+)\s*(?:€|&euro;)/i);
+  if (m) return nombre(m[1].replace(/\./g, "").replace(/[\s ]/g, ""));
+  const j = html.match(/"priceAmount"\s*:\s*([\d.]+)/);
+  return j ? nombre(j[1]) : null;
+}
+
+// La page en texte, ligne par ligne, comme quand on la copie : on y cherche ensuite le prix comme une personne
+function texteDeHtml(html){
+  return html
+    .replace(/<(script|style|noscript|svg|template|iframe)[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<br\s*\/?>|<\/?(p|div|li|ul|ol|tr|td|th|h[1-6]|section|article|header|footer|nav|button|label|option|dt|dd|table|form|aside|main)\b[^>]*>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;|&#160;|&#xa0;/gi, " ").replace(/&euro;|&#8364;|&#x20ac;/gi, "€")
+    .replace(/&amp;/g, "&").replace(/&#0?39;|&apos;|&rsquo;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&eacute;/g, "é").replace(/&egrave;/g, "è").replace(/&agrave;/g, "à").replace(/&ccedil;/g, "ç").replace(/&ecirc;/g, "ê")
+    .replace(/&#(\d+);/g, (t, n) => String.fromCharCode(+n));
+}
+
+// Une page « Vérifiez que vous n'êtes pas un robot » au lieu du produit
+function pageBloquee(html){
+  const titre = (html.match(/<title[^>]*>([^<]*)<\/title>/i) || [])[1] || "";
+  return /robot|captcha|just a moment|un instant|attention required|access denied|acc[eè]s refus|v[ée]rification|are you a human|pardon our interruption/i.test(titre)
+    || (html.length < 15000 && /captcha|cf-challenge|datadome|perimeterx|px-captcha/i.test(html));
+}
+
+// « 1 299,99 € » → 1299.99
+function lirePrix(t){
+  let s = String(t || "").replace(/[^\d.,]/g, "");
+  if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
+  const n = parseFloat(s);
+  return Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : null;
+}
+
+// La même lecture du prix que sur le site (index.html, « lireTextePage ») : garder les deux pareilles
+function prixDansTexte(texte){
+  const brutes = texte.replace(/ /g, " ").split(/\r?\n/).map(l => l.replace(/\s+/g, " ").trim()).filter(Boolean);
+  // Recolle les prix coupés en morceaux : « 18 » / « , » / « 95€ » (Amazon), « 44 » / « € » / « , » / « 97 » (Leclerc)…
+  const lignes = [];
+  const debut = /^\d{1,4}(\s?€)?$/, suite = /^(€|[,.]|[,.]?\d{2}|€\s?[,.]?\d{2}|[,.]\d{2}\s?€|\d{2}\s?€)$/;
+  for (let i = 0; i < brutes.length; i++){
+    let fait = false;
+    for (let n = 4; n >= 2 && !fait; n--){
+      const m = brutes.slice(i, i + n);
+      if (m.length < n || !debut.test(m[0]) || !m.slice(1).every(x => suite.test(x))) continue;
+      const j = m.join("").replace(/\s/g, "");
+      if (/^\d{1,4}(€[,.]?\d{2}|[,.]\d{2}€|€)$/.test(j)){ lignes.push(j.replace(/^(\d+)€[,.]?(\d{2})$/, "$1,$2 €")); i += n - 1; fait = true; }
+    }
+    // « 51 € , 49 » sur une seule ligne → « 51,49 € »
+    if (!fait) lignes.push(brutes[i].replace(/(?<![\d,.])(\d{1,4})\s?€\s?[,.]\s?(\d{2})(?!\d)/g, "$1,$2 €"));
+  }
+  const r = {};
+  // Les prix : « 49,99 € », « 49 € », « € 49.99 », « 1 299,99 € »… sauf livraison, mensualités, anciens prix
+  const pasUnPrix = /livraison|offert|dès |à partir|économi|au lieu|\bavant\b|barré|ancien|\/ ?mois|€ ?\/|par mois|mois|(?<![a-zà-ÿ])x ?\d|crédit|financ|retrait|frais|remise|réduction|-\s?\d+ ?%|éco-?part|ecopart|reprise|carte cadeau|code|cashback|rembours|soit |prix public|pvc|ppc|jusqu|conseillé|recommandé|référence|initial|habituel|le plus bas|was |rrp|garantie|assurance|\d ans? :|pour \d+ ans|estimée|prévue? le|par unit|par pièce|dépensé|fidélité|= ?\d+ ?points?|adhérez|abonnement|le kg|le litre|prix au |au kg|au litre|montant total|total dû|taeg|current price|original price|prix actuel|prix d'origine/i;
+  // Ancien prix annoncé sur la ligne d'avant (« Prix conseillé : » puis « 29,99 € »)
+  const ancienPrix = /conseillé|recommandé|référence|initial|habituel|barré|au lieu|\bavant\b|ancien|le plus bas|was|rrp|prix public|économ|livr|expédi|retrait|frais de port|garantie|assurance|extension|occasion|reconditionn|seconde main|point relais|express|install|mis en service|mise en service|^(express|standard|relais|colissimo|chronopost|ups|dpd|mondial relay|point relais|à domicile|en magasin|eco|économique)$/i;
+  // « 19,90 € », « 19 €90 » (Cdiscount, Leclerc…), « € 19.90 », « 19.90 EUR »
+  const motif = /(?<![\d,.])(\d{1,4}(?:[ .]\d{3})*)\s?€\s?(\d{2})(?!\d)|€\s?(\d{1,4}(?:[ .]\d{3})*(?:[,.]\d{1,2})?)(?![\d,.])|(?<![\d,.])(\d{1,4}(?:[ .]\d{3})*(?:[,.]\d{1,2})?)\s?(?:€|EUR(?:\b|(?=ou\b)))/gi;
+  const seulPrix = /^(?:prix\s*:?\s*)?(?:€\s?)?\d{1,4}(?:[ .]\d{3})*(?:[,.]\d{1,2})?\s?(?:€|EUR)?\s?(?:\d{2})?\s?(?:TTC)?$/i;
+  const candidats = [];
+  // « En 4 fois » / « 3x sans frais » sur la ligne d'avant : c'est une mensualité, pas le prix
+  const mensualite = /en [2-9] ?fois|\b[2-9] ?x\b|mensualit|sans frais|paiement|payez en|échéance|versement|crédit|klarna|paypal|oney|alma|floa|scalapay/i;
+  // Sur la ligne d'avant, « Paiement en ligne · Service offert » (Auchan) ne veut pas dire « en plusieurs fois »
+  const mensualiteAvant = /en [2-9] ?fois|\b[2-9] ?x\b|mensualit|payez en|paiement en [2-9]|paiement de|1er paiement|premier paiement|sans frais|échéance|versement|klarna|paypal|oney|alma|floa|scalapay/i;
+  // « 40,28 € » puis « Prix conseillé par la coopérative » (Leclerc) : l'étiquette est en dessous de l'ancien prix
+  const etiquetteDessous = /^(prix )?(conseillé|recommandé|de référence|barré|initial|le plus bas|d'origine|habituel)(?!.*:\s*$)/i;
+  lignes.forEach((l, i) => {
+    const avant = lignes[i - 1] || "", apres = lignes[i + 1] || "";
+    if (etiquetteDessous.test(apres)) return;
+    // « 5 € » / « cagnottés » (Auchan), « 10 € » / « de réduction » : pas le prix
+    if (/^(cagnott|de réduction|d'économie|remboursés?|offerts?$|de remise)/i.test(apres)) return;
+    // Prix à l'unité, au kilo… souvent entre parenthèses : « ( » / « 174,95€ » / « 174,95€ / unité) » (Amazon)
+    if (avant === "(" || /^[\d\s,.€]*(\/|par) ?(unit|pièce|kg|litre|l\b)/i.test(apres)) return;
+    // Offre d'un vendeur « État : Reconditionné » juste au-dessus (Darty, Fnac…) : on garde le prix du neuf
+    const etat = lignes.slice(Math.max(0, i - 5), i).reverse().find(x => /^état\s*:/i.test(x));
+    if (etat && /reconditionn|occasion|seconde main|très bon|bon état|correct|comme neuf/i.test(etat)) return;
+    const etiquetteDuPrixDAvant = (etiquetteDessous.test(avant) && motif.test(lignes[i - 2] || "")) || /^prix (reconditionn|d'occasion)/i.test(avant); motif.lastIndex = 0;
+    // « 379,00 € neuf » : le prix du neuf donné pour comparer (Back Market)
+    if (/€ ?neuf\b/i.test(l)) return;
+    if (l.length > 140 || pasUnPrix.test(l) || mensualite.test(l) || mensualiteAvant.test(avant) || (avant.length <= 45 && ancienPrix.test(avant) && !etiquetteDuPrixDAvant)) return;
+    // Texte caché des cartes « produits conseillés » (Nike…) : « current price 132,99 €, original price 189,99 »
+    if (/current price|original price|prix d'origine/i.test(avant)) return;
+    // Les accessoires proposés juste en dessous (« Compléter avec », « Souvent achetés ensemble »…)
+    if (lignes.slice(Math.max(0, i - 3), i).some(x => /compl[éè]te[rz]? avec|achet[ée]s ensemble|vous aimerez|produits similaires|accessoires compatibles|les clients ont aussi/i.test(x))) return;
+    // « Dès » / « 11,25 € » / « /mois » : un prix « à partir de » ou une mensualité
+    if (/^\/ ?mois|^par mois|^\/ ?month/i.test(apres)) return;
+    // « Dès » / « À partir de » au-dessus : un prix possible, mais moins sûr
+    const aPartir = /^(dès|à partir de|a partir de|from)$/i.test(avant);
+    // « 115,00 € 85,00 € » sur une ligne : l'ancien prix puis le prix soldé, on ne garde que le second
+    const vus = [...l.matchAll(motif)].map(m => m[1] ? lirePrix(m[1] + "," + m[2]) : lirePrix(m[3] || m[4]));
+    vus.forEach((v, k) => {
+      if (vus.length === 2 && k === 0 && vus[1] < v) return;
+      if (v && v >= 0.5 && v < 100000) candidats.push({ v, i, seul: seulPrix.test(l) || (vus.length === 2 && /^[\d\s,.€]+$/.test(l)), aPartir });
+    });
+  });
+  if (candidats.length){
+    // On note chaque prix pour trouver celui du produit (et pas ceux des autres versions, des produits conseillés…)
+    const panier = [];
+    lignes.forEach((l, i) => { if (/ajouter au panier|ajouter au sac|add to (cart|bag|basket)|^acheter|acheter maintenant|je l'achète|mettre au panier|commander|pré-?commander|pre-?order/i.test(l)) panier.push(i); });
+    const etudies = candidats.slice(0, 40), compte = {};
+    // Liste de variantes : « Noir » / « 199,99€ » / « Orange » / « 193,81€ » (Boulanger…)
+    const prixSeul = i => !!lignes[i] && seulPrix.test(lignes[i]);
+    candidats.forEach(c => { c.liste = (prixSeul(c.i - 2) && (lignes[c.i - 1] || "").length < 60) || (prixSeul(c.i + 2) && (lignes[c.i + 1] || "").length < 60); });
+    // Le dernier prix avant le bouton « Ajouter au panier » : c'est presque toujours celui du produit
+    panier.forEach(p => { const d = candidats.filter(c => c.i < p && p - c.i <= 40 && !c.liste).pop(); if (d) candidats.filter(c => c.v === d.v && d.i - c.i <= 5 && c.i <= d.i).forEach(c => { c.dernier = true; if (!etudies.includes(c)) etudies.push(c); }); });
+    etudies.forEach(c => compte[c.v] = (compte[c.v] || 0) + 1);
+    const prixSeulLigne = i => !!lignes[i] && seulPrix.test(lignes[i]);
+    const parLigne = {}; candidats.forEach(c => { if (parLigne[c.i] == null) parLigne[c.i] = c.v; });
+    etudies.forEach(c => {
+      let s = 0;
+      if (c.seul) s += 2;                                                   // le prix est seul sur sa ligne
+      if (panier.some(p => p > c.i && p - c.i <= 8)) s += 3;                // juste avant « Ajouter au panier »
+      if (c.dernier) s += 3;
+      if (c.liste) s -= 3;
+      if (c.aPartir) s -= 2;
+      if (/prix|price|tarif|en 1 fois|maintenant/i.test(lignes[c.i - 1] || "")) s += 1;
+      if (/^(prix|price|notre prix|prix de vente|prix actuel)\s*:?$/i.test(lignes[c.i - 1] || "")) s += 2;
+      if (compte[c.v] >= 2) s += 2;                                         // il revient plusieurs fois
+      if (prixSeulLigne(c.i - 1) && prixSeulLigne(c.i + 1)) s -= 3;         // au milieu d'une liste de prix (autres versions)
+      // Deux prix qui se suivent (« 99,99 € » puis « 69,99 € ») : le plus haut est l'ancien prix barré
+      const voisin = j => { const v = parLigne[j]; return v != null && seulPrix.test(lignes[j]) ? v : null; };
+      if (c.seul && ((voisin(c.i + 1) != null && voisin(c.i + 1) < c.v && voisin(c.i + 2) == null) || (voisin(c.i - 1) != null && voisin(c.i - 1) < c.v && voisin(c.i - 2) == null))) s -= 4;
+      // Juste après le vrai prix, on choisit sa taille ou sa couleur ; et le prix du produit vient en premier
+      if (lignes.slice(c.i + 1, c.i + 4).some(x => /taille|size|pointure|quantit|couleur|coloris/i.test(x))) s += 2;
+      if (c === etudies[0]) s += 1;
+      c.score = s;
+    });
+    const premier = etudies.reduce((a, b) => b.score > a.score ? b : a);
+    r.prix = premier.v;
+  }
+  return r;
 }
 
 // Refuse les adresses internes (sécurité : le serveur ne va lire que de vrais sites web)
@@ -139,7 +291,7 @@ function lienAutorise(u){
   if (u.protocol !== "https:" && u.protocol !== "http:") return false;
   const h = u.hostname.toLowerCase();
   if (h === "localhost" || h.endsWith(".local") || h.endsWith(".internal") || !h.includes(".")) return false;
-  if (/^[\d.]+$/.test(h) || h.includes(":")) return false;
+  if (/^[\d.]+$/.test(h) || h.includes(":")) return false; // pas d'adresse IP
   return true;
 }
 
@@ -152,12 +304,13 @@ async function apercu(lien){
     const r = await fetch(u.href, { redirect: "follow", signal: AbortSignal.timeout(7000), headers: {
       "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
       "Accept": "text/html", "Accept-Language": "fr-FR,fr;q=0.9" } });
-    if (r.ok && /html/i.test(r.headers.get("content-type") || "")){
-      const html = (await r.text()).slice(0, 1500000);
-      resultat.prix = prixDansPage(html);
-      resultat.nom = nomDansPage(html);
-    }
-  }catch{}
+    const html = /html/i.test(r.headers.get("content-type") || "") ? (await r.text()).slice(0, 2000000) : "";
+    // Le site refuse les robots : on le dit, et on n'insiste pas
+    if (!r.ok || !html || pageBloquee(html)){ resultat.bloque = true; return resultat; }
+    // 1. les données « produit » cachées dans la page, 2. le prix d'Amazon, 3. la page lue comme du texte
+    resultat.prix = prixDansPage(html) || prixAmazon(html) || prixDansTexte(texteDeHtml(html)).prix || null;
+    resultat.nom = nomDansPage(html);
+  }catch{ resultat.bloque = true; }
   return resultat;
 }
 
@@ -170,6 +323,7 @@ export default async (req) => {
   }
   const profils = (await s.get("profils", { type: "json" })) || {};
 
+  // Inscription et connexion
   if (req.method === "POST" && (chemin[0] === "inscription" || chemin[0] === "connexion")){
     const prenom = String(body.prenom || "").trim().slice(0, 30);
     const id = slug(prenom), mdp = String(body.motdepasse || "");
@@ -203,6 +357,7 @@ export default async (req) => {
 
   if (chemin[0] !== "listes") return erreur("Adresse inconnue", 404);
 
+  // Toutes les listes
   if (req.method === "GET" && chemin.length === 1){
     const listes = await Promise.all(Object.entries(profils).map(async ([id, p]) => {
       const cadeaux = (await s.get("liste-" + id, { type: "json" })) || [];
@@ -217,6 +372,7 @@ export default async (req) => {
   const proprietaire = moi && moi.id === id;
   const admin = !!(moi && ADMINS.includes(moi.id) && profils[moi.id]);
 
+  // Admin : supprimer une liste (le profil, ses cadeaux et ses réservations)
   if (req.method === "DELETE" && chemin.length === 2){
     if (!admin) return erreur("Seul l'admin peut supprimer une liste.", 403);
     if (proprietaire) return erreur("Tu ne peux pas supprimer ta propre liste.", 400);
@@ -227,6 +383,7 @@ export default async (req) => {
     return json({ ok: true });
   }
 
+  // Admin : donner un nouveau code à quelqu'un qui a oublié le sien
   if (req.method === "POST" && chemin[2] === "code"){
     if (!admin) return erreur("Seul l'admin peut changer le code des autres.", 403);
     const mdp = String(body.motdepasse || "");
@@ -237,12 +394,14 @@ export default async (req) => {
     return json({ ok: true });
   }
 
+  // Une liste
   if (req.method === "GET" && chemin.length === 2){
     const cadeaux = (await s.get("liste-" + id, { type: "json" })) || [];
     const resa = proprietaire ? null : ((await s.get("resa-" + id, { type: "json" })) || {});
     return json({ id, prenom: profils[id].prenom, theme: themeDe(profils[id]), cadeaux, reservations: resa });
   }
 
+  // Changer le thème de sa liste (ou celui d'un autre pour l'admin)
   if (req.method === "PUT" && chemin[2] === "theme"){
     if (!proprietaire && !admin) return erreur("Connecte-toi pour changer le thème de ta liste.", 401);
     profils[id] = { ...profils[id], theme: themeDe({ theme: body }) };
@@ -250,6 +409,7 @@ export default async (req) => {
     return json({ theme: profils[id].theme });
   }
 
+  // Modifier ses cadeaux
   if (req.method === "PUT" && chemin[2] === "cadeaux"){
     if (!proprietaire && !admin) return erreur("Connecte-toi pour modifier ta liste.", 401);
     const cadeaux = (Array.isArray(body.cadeaux) ? body.cadeaux : []).map(nettoyerCadeau).filter(Boolean).slice(0, MAX_CADEAUX);
@@ -257,6 +417,7 @@ export default async (req) => {
     return json({ cadeaux });
   }
 
+  // Réserver ou annuler
   if (req.method === "POST" && chemin[2] === "reservations"){
     if (proprietaire) return erreur("Tu ne peux pas réserver tes propres cadeaux !", 403);
     const cadeaux = (await s.get("liste-" + id, { type: "json" })) || [];
@@ -273,3 +434,4 @@ export default async (req) => {
 };
 
 export const config = { path: "/api/*" };
+
