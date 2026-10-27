@@ -35,7 +35,7 @@ body{margin:0;min-height:100vh;color:var(--snow);font-family:var(--body);font-si
 
 /* Guirlande */
 .lights{position:fixed;top:0;left:0;right:0;height:calc(38px + env(safe-area-inset-top, 0px));padding-top:env(safe-area-inset-top, 0px);
-  display:flex;justify-content:space-around;pointer-events:none;z-index:4}
+  display:flex;justify-content:space-around;pointer-events:none;z-index:4;transform:translateZ(0)}
 .lights::before{content:"";position:absolute;left:-2%;right:-2%;top:calc(env(safe-area-inset-top, 0px) + 4px);height:16px;
   border-bottom:2px solid #1d4a3d;border-radius:0 0 50% 50%/0 0 100% 100%}
 .lights i{position:relative;top:14px;width:9px;height:14px;border-radius:45% 45% 50% 50%;background:var(--c);box-shadow:0 0 12px 3px var(--c)}
@@ -44,12 +44,16 @@ body{margin:0;min-height:100vh;color:var(--snow);font-family:var(--body);font-si
   .lights i{animation:twinkle 1.8s ease-in-out infinite alternate}
   .lights i:nth-child(2n){animation-delay:.9s}.lights i:nth-child(3n){animation-delay:.45s}
 }
-@keyframes twinkle{to{opacity:.3;box-shadow:none}}
+/* (on ne fait varier que la transparence : le téléphone n'a rien à redessiner) */
+@keyframes twinkle{to{opacity:.3}}
 
-#snow{position:fixed;inset:0;pointer-events:none;z-index:1}
+/* Neige, guirlande et décor restent chacun sur leur propre calque : quand on fait défiler la page, rien n'est redessiné */
+#snow{position:fixed;top:0;left:0;width:100%;pointer-events:none;z-index:1;transform:translateZ(0)}
 
 /* Décorations : des scènes de Noël dessinées derrière la page (sapins, traîneau, village…), qu'on peut toucher */
-#deco{position:fixed;inset:0;pointer-events:none;z-index:2;overflow:hidden}
+#deco{position:fixed;inset:0;pointer-events:none;z-index:2;overflow:hidden;transform:translateZ(0)}
+/* La fumée des cheminées vit sur un calque à part, pour bouger sans faire redessiner tout le village */
+#deco .calque{pointer-events:none;will-change:transform}
 /* Assez haute pour que rien ne soit coupé : sur ordinateur toute la scène tient, sur téléphone on coupe juste les côtés */
 #deco .sol{position:absolute;left:0;right:0;bottom:0;width:100%;height:max(31vw,250px);opacity:.9}
 #deco .ciel{position:absolute;top:calc(100px + env(safe-area-inset-top, 0px));right:-20px;width:min(32vw,280px);height:auto}
@@ -58,7 +62,8 @@ body{margin:0;min-height:100vh;color:var(--snow);font-family:var(--body);font-si
 #deco svg g{transform-box:fill-box}
 /* Le traîneau traverse le ciel toutes les 22 secondes (on le voit dès l'ouverture) */
 #deco .traineau-vol{position:absolute;top:calc(17vh + env(safe-area-inset-top, 0px));left:0;width:min(46vw,380px);transform:translateX(105vw)}
-#deco .traineau-vol svg{display:block;width:100%;height:auto;filter:drop-shadow(0 0 10px rgba(255,233,168,.35))}
+#deco .traineau-vol{will-change:transform}
+#deco .traineau-vol svg{display:block;width:100%;height:auto}
 #deco .sapin-g{transform-origin:50% 100%}
 #deco .sapin-g.secoue{animation:secoue .9s ease}
 @keyframes secoue{15%{transform:rotate(-7deg)}35%{transform:rotate(6deg)}55%{transform:rotate(-4deg)}75%{transform:rotate(2deg)}100%{transform:none}}
@@ -85,8 +90,10 @@ body{margin:0;min-height:100vh;color:var(--snow);font-family:var(--body);font-si
   @keyframes vol{0%{transform:translateX(105vw) translateY(0)}25%{transform:translateX(70vw) translateY(-14px)}50%{transform:translateX(35vw) translateY(6px)}75%{transform:translateX(0) translateY(-10px)}100%{transform:translateX(-60vw) translateY(4px)}}
   #deco .traineau-vol .pattes{animation:galop .4s steps(2) infinite}
   @keyframes galop{50%{transform:scaleY(.6)}}
-  #deco .scintille{animation:scintille 2.4s ease-in-out infinite alternate}
-  #deco .scintille:nth-of-type(3n){animation-delay:.8s} #deco .scintille:nth-of-type(3n+1){animation-delay:1.6s}
+  /* Les petites lumières clignotent comme une vraie guirlande (allumé / tamisé) : le décor n'est redessiné
+     qu'une fois toutes les 0,8 s au lieu de 60 fois par seconde */
+  #deco .scintille{animation:scintille 1.6s steps(1) infinite alternate}
+  #deco .scintille:nth-of-type(2n){animation-delay:-.8s}
   @keyframes scintille{to{opacity:.25}}
   #deco .fumee{animation:fumee 5s ease-out infinite}
   #deco .fumee:nth-of-type(2n){animation-delay:2.5s}
@@ -107,7 +114,7 @@ body{margin:0;min-height:100vh;color:var(--snow);font-family:var(--body);font-si
 .deco-filante::before{content:"";position:absolute;left:-3px;top:-3px;width:8px;height:8px;border-radius:50%;background:#fff;box-shadow:0 0 12px 4px #fff6d6}
 @keyframes filante{0%{opacity:0;transform:rotate(-28deg) translateX(0)}10%{opacity:1}100%{opacity:0;transform:rotate(-28deg) translateX(-420px)}}
 /* L'intérieur d'une maison */
-.deco-interieur{position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:16px;background:rgba(5,10,20,.6);backdrop-filter:blur(3px);animation:apparait .3s ease}
+.deco-interieur{position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:16px;background:rgba(5,10,20,.75);animation:apparait .3s ease}
 .deco-piece{width:min(480px,100%);display:grid;gap:12px;justify-items:center;background:#2a160e;border-radius:18px;padding:14px;box-shadow:0 20px 50px rgba(0,0,0,.5),0 0 0 3px #f2c35b}
 .deco-piece svg{width:100%;height:auto;border-radius:12px}
 .deco-piece p{margin:0;color:#fff3d6;text-align:center}
@@ -457,6 +464,12 @@ body[data-neoncouleur="arcenciel"] .slot:nth-child(6n), body[data-neoncouleur="a
   @keyframes allumage{0%{opacity:0}8%{opacity:.9}10%{opacity:.1}18%{opacity:1}20%{opacity:.3}24%{opacity:1}40%{opacity:.75}42%,100%{opacity:1}}
   @keyframes respire{50%{text-shadow:0 0 2px #fff,0 0 5px var(--n1),0 0 10px var(--n1),0 0 20px var(--n1),0 0 40px var(--n1),0 0 64px var(--n1)}}
   @keyframes arcenciel{to{filter:hue-rotate(360deg)}}
+}
+/* Sur téléphone, le titre néon ne « respire » plus en continu (trop lourd à redessiner) : il reste allumé */
+@media (pointer:coarse){
+  body[data-neon="1"] h1{animation:none}
+  body[data-neon="1"]:not([data-neon-pret]) h1{animation:allumage 1.5s linear 1}
+  body[data-neoncouleur="arcenciel"] h1{animation:arcenciel 8s linear infinite}
 }
 
 /* Les deux options dans « Mes thèmes » */
@@ -1036,6 +1049,12 @@ function afficherDeco(id){
   decoMinuteurs.forEach(clearInterval); decoMinuteurs = [];
   const d = $("#deco"); if (!d) return;
   d.innerHTML = (DECOS[id] || DECOS.aucune).dessin();
+  // La fumée part sur un calque transparent posé exactement par-dessus le dessin
+  d.querySelectorAll("svg").forEach(svg => {
+    const fumees = svg.querySelectorAll(".fumee"); if (!fumees.length) return;
+    const calque = svg.cloneNode(false); calque.classList.add("calque");
+    fumees.forEach(f => calque.append(f)); svg.after(calque);
+  });
   document.body.dataset.deco = id === "aucune" ? "" : id;
   if (id !== "aucune") chargerSons();
   animerDeco(d);
@@ -1987,31 +2006,45 @@ async function sauver(cadeaux, texte){
 function neige(){
   if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   const cv = $("#snow"), ctx = cv.getContext("2d");
-  let w, h, flocons = [];
+  // Trois tailles de flocons, chacune dessinée d'un seul coup (bien plus léger pour le téléphone)
+  const TEINTES = ["rgba(247,244,238,.45)", "rgba(247,244,238,.65)", "rgba(247,244,238,.85)"];
+  let w = 0, h = 0, flocons = [], avant = 0;
   function taille(){
-    w = cv.width = innerWidth; h = cv.height = innerHeight;
-    const n = Math.round(Math.min(140, w * h / 8000));
-    flocons = Array.from({length:n}, () => ({x:Math.random()*w, y:Math.random()*h, r:.8+Math.random()*2.6, v:.35+Math.random()*1.1, d:Math.random()*6.3}));
+    // Sur téléphone, la barre d'adresse qui apparaît / disparaît change la hauteur en permanence quand on défile :
+    // on garde alors la neige telle quelle (sinon elle se recrée et la page saccade)
+    const nw = innerWidth, nh = Math.max(innerHeight, screen.height || 0);
+    if (nw === w && nh <= h) return;
+    const largeurChange = nw !== w;
+    w = cv.width = nw; h = cv.height = nh; cv.style.height = nh + "px";
+    if (!largeurChange) return;
+    const n = Math.round(Math.min(120, w * innerHeight / 8000));
+    flocons = Array.from({length:n}, () => { const r = .8 + Math.random() * 2.6; return {x:Math.random()*w, y:Math.random()*h, r, v:.35+Math.random()*1.1, d:Math.random()*6.3, t:Math.min(2, Math.floor((r - .8) / .9))}; });
   }
-  function frame(){
-    ctx.clearRect(0, 0, w, h);
+  function frame(now){
+    // (même vitesse sur tous les écrans, qu'ils tournent à 60 ou 120 images par seconde)
+    const k = avant ? Math.min(3, (now - avant) / 16.7) : 1; avant = now;
     for (const f of flocons){
-      f.y += f.v; f.d += .012; f.x += Math.sin(f.d) * .45;
+      f.y += f.v * k; f.d += .012 * k; f.x += Math.sin(f.d) * .45 * k;
       if (f.y > h + 5){ f.y = -5; f.x = Math.random() * w; }
-      ctx.fillStyle = "rgba(247,244,238," + (.35 + f.r / 5) + ")";
-      ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, 6.2832); ctx.fill();
+    }
+    ctx.clearRect(0, 0, w, h);
+    for (let t = 0; t < 3; t++){
+      ctx.fillStyle = TEINTES[t]; ctx.beginPath();
+      for (const f of flocons) if (f.t === t){ ctx.moveTo(f.x + f.r, f.y); ctx.arc(f.x, f.y, f.r, 0, 6.2832); }
+      ctx.fill();
     }
     requestAnimationFrame(frame);
   }
   addEventListener("resize", taille);
-  taille(); frame();
+  taille(); requestAnimationFrame(frame);
 }
 
 setInterval(majDecompte, 60000);
 // Les listes ouvertes se mettent à jour toutes les 30 secondes (nouvelles réservations, nouveaux cadeaux)
 setInterval(async () => {
   if (vue !== "liste" || !liste || liste.demo || enCours || aConfirmer) return;
-  try{ const l = await api("listes/" + liste.id); liste = joliListe(l); render(); }catch{}
+  // (on ne redessine que si quelque chose a vraiment changé : sinon la page clignote et saute pendant qu'on la lit)
+  try{ const l = joliListe(await api("listes/" + liste.id)); if (JSON.stringify(l) !== JSON.stringify(liste)){ liste = l; render(); } }catch{}
 }, 30000);
 aller();
 neige();
