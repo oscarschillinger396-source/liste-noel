@@ -980,8 +980,8 @@ async function jouer(n, { fort = 1, apres = 0, depuis = 0, duree, entree = .01, 
 }
 // Chaque son est raccourci et réglé pour qu'ils aient tous à peu près le même volume
 const BRUITS = {
-  // Les branches d'abord, puis la clochette une fois les branches finies (pas en même temps)
-  sapin(){ jouer("sapin"); jouer("clochettes", { fort: .35, apres: .75, duree: 2.2, fondu: .8 }); },
+  // Un sapin qu'on secoue, rejoué en entier à chaque toucher (enregistré bas, d'où le volume poussé)
+  sapin(){ jouer("sapin", { fort: 4 }); },
   traineau(){ jouer("hohoho"); jouer("grelots", { fort: .6, apres: .7 }); },
   // Le feu crépite tant qu'on reste dans la maison
   feu(){ return jouer("feu", { fort: 10, depuis: .5, entree: .6, boucle: true }); },
