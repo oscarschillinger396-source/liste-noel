@@ -275,7 +275,6 @@ footer small{color:var(--frost);font-size:14px}
 .choix-t{font-family:var(--display);font-size:30px;line-height:1.05;transform:skewX(-6deg)}
 .choix-d{font-size:16px;color:#3c524a}
 @media (prefers-reduced-motion:no-preference){ .choix-carte{transition:transform .15s ease} .choix-carte:hover{transform:translateY(-3px)} }
-.choix-carte.bloque{opacity:.6;filter:grayscale(.6)}
 
 /* Couleur du prénom : chacun choisit la sienne (sur le titre de sa liste, sa carte et en haut quand il est connecté) */
 .pseudo{color:var(--pseudo, inherit)}
@@ -467,7 +466,7 @@ body[data-neoncouleur="arcenciel"] .slot:nth-child(6n), body[data-neoncouleur="a
 const $ = s => document.querySelector(s);
 const SEED = (typeof LISTE !== "undefined" && LISTE) || null; // l'ancienne liste d'Oscar, pour l'importer ou la montrer hors ligne
 let session = lireSession();      // { token, profil: { id, prenom } } quand on est connecté
-if (session) try{ localStorage.setItem("aUnCompte", "1"); }catch{}
+if (session) retenirCompte(session.profil.id);
 let invite = lireInvite();        // true quand on a choisi « Mode invité »
 let vueApres = null;              // la liste demandée avant l'écran d'entrée (lien partagé)
 let cible = null;                 // la liste qu'on modifie : la sienne, ou celle d'un autre pour l'admin
@@ -497,10 +496,14 @@ function choisirInvite(oui){ invite = oui; try{ oui ? localStorage.setItem("invi
 function ecrireSession(s){
   session = s;
   try{ s ? localStorage.setItem("session", JSON.stringify(s)) : localStorage.removeItem("session"); }catch{}
-  // Ce téléphone a servi à se connecter à un compte : on n'y pourra plus entrer en invité (sinon, on pourrait voir les réservations)
-  if (s) try{ localStorage.setItem("aUnCompte", "1"); }catch{}
+  if (s) retenirCompte(s.profil.id);
 }
-function aUnCompte(){ try{ return localStorage.getItem("aUnCompte") === "1"; }catch{ return false; } }
+// Les comptes qui se sont connectés sur ce téléphone. En invité, on n'y verra pas les réservations
+// de leurs listes (sinon on pourrait tricher en passant en invité) ; les autres listes restent normales.
+function comptesIci(){ try{ const l = JSON.parse(localStorage.getItem("comptesIci") || "[]"); return Array.isArray(l) ? l : []; }catch{ return []; } }
+function mesResas(){ try{ const l = JSON.parse(localStorage.getItem("mesResas") || "[]"); return Array.isArray(l) ? l : []; }catch{ return []; } }
+function retenirCompte(id){ if (id && !comptesIci().includes(id)) try{ localStorage.setItem("comptesIci", JSON.stringify([...comptesIci(), id])); }catch{} }
+try{ localStorage.removeItem("aUnCompte"); }catch{}
 // Sa propre liste, quand on est connecté à son compte : c'est la surprise, on n'y voit pas les réservations.
 // (Plusieurs personnes peuvent utiliser le même téléphone : seul le compte connecté compte.)
 function estMaListe(id){ return !!id && !!session && session.profil.id === id; }
@@ -553,10 +556,8 @@ async function aller(){
   if (h.startsWith("liste-")){ vue = "liste"; vueId = h.slice(6); }
   else if (h.startsWith("modifier-") && estAdmin()){ vue = "ma-liste"; cible = h.slice(9); }
   else if (["connexion", "inscription", "ma-liste"].includes(h)){ vue = h; if (h === "ma-liste" && session) cible = session.profil.id; }
-  else if (h === "invite"){ if (aUnCompte()){ location.hash = "connexion"; return; } choisirInvite(true); location.hash = "accueil"; return; }
+  else if (h === "invite"){ choisirInvite(true); location.hash = "accueil"; return; }
   else { vue = "accueil"; }
-  // Un téléphone qui a déjà un compte ne reste pas en invité
-  if (invite && aUnCompte() && !session) choisirInvite(false);
   // Pas connecté et pas encore entré en invité : on montre d'abord l'écran d'entrée
   if (!session && !invite && (vue === "accueil" || vue === "liste")){ vueApres = vue === "liste" ? h : null; vue = "bienvenue"; }
   if (vue === "ma-liste" && !session){ location.hash = "connexion"; return; }
@@ -705,11 +706,7 @@ function vueBienvenue(main){
     b.append(el("span", "choix-i", icone), el("span", "choix-t", titre), el("span", "choix-d", texte));
     b.onclick = action; return b;
   };
-  if (aUnCompte()){
-    // Ceux qui ont un compte ne passent pas en invité : sinon ils verraient les réservations de leur liste
-    const b = carte("🔒", "Mode invité", "Pas sur ce téléphone : il sert déjà à un compte. Connecte-toi avec ton prénom et ton code.", () => { location.hash = "connexion"; });
-    b.classList.add("bloque"); g.append(b);
-  } else g.append(carte("👀", "Mode invité", "Regarder les listes et réserver un cadeau. Pas besoin de mot de passe.", () => {
+  g.append(carte("👀", "Mode invité", "Regarder les listes et réserver un cadeau. Pas besoin de mot de passe.", () => {
     choisirInvite(true);
     if (vueApres){ const h = vueApres; vueApres = null; if (location.hash === "#" + h) aller(); else location.hash = h; }
     else if (location.hash === "#accueil") aller(); else location.hash = "accueil";
@@ -777,8 +774,17 @@ function vueListe(main){
   const proprio = estMaListe(liste.id);
   // C'est la surprise : sur sa propre liste, on ne voit jamais ce qui est réservé
   if (proprio) liste.reservations = null;
+  // En invité, sur un téléphone où cette personne s'est déjà connectée : on ne montre que
+  // les réservations faites depuis ce téléphone (pour pouvoir les annuler), pas celles des autres
+  const cache = !session && comptesIci().includes(liste.id);
+  if (cache && liste.reservations){
+    const miennes = mesResas();
+    liste.reservations = Object.fromEntries(Object.entries(liste.reservations).filter(([id]) => miennes.includes(id)));
+  }
   entete("La liste " + de(liste.prenom), proprio
     ? "C'est ta liste. Les réservations sont cachées pour te garder la surprise."
+    : cache
+      ? "Pour garder la surprise, les réservations de cette liste sont cachées sur ce téléphone. Clique sur « Je l'offre » : si quelqu'un l'a déjà pris, le site te le dira."
     : session
       ? "Pour garder la surprise, tu ne vois que tes propres réservations. Clique sur « Je l'offre » : si quelqu'un l'a déjà pris, le site te le dira."
       : "Clique sur « Je l'offre » pour réserver un cadeau : les autres verront qu'il est déjà pris.");
@@ -920,6 +926,8 @@ async function changerResa(cadeau, action){
     if (liste.demo) throw new Error("La réservation marchera une fois le site en ligne sur Netlify.");
     const r = await api("listes/" + liste.id + "/reservations", {method: "POST", body: {cadeau, action}});
     liste.reservations = r.reservations;
+    // On retient sur ce téléphone les cadeaux qu'on a réservés soi-même
+    try{ const l = mesResas().filter(x => x !== cadeau); if (action === "reserver") l.push(cadeau); localStorage.setItem("mesResas", JSON.stringify(l)); }catch{}
     msg = {id: cadeau, texte: action === "reserver" ? "C'est noté, merci !" : "Réservation annulée."};
     if (action === "reserver") fete = cadeau;
   }catch(e){ msg = {id: cadeau, err: true, texte: e.message}; }
@@ -931,7 +939,8 @@ function zoneResa(c){
   if (liste.reservations && liste.reservations[id]){
     const ok = el("span", "resa-ok" + (fete === id ? " pop" : ""));
     // Connecté : on ne voit que ses propres réservations ; en invité : celles de tout le monde
-    const t = el("span", "txt"); t.append(el("b", null, session ? "Tu l'offres" : "Réservé"), el("small", null, session ? "C'est toi qui l'as réservé" : "Quelqu'un l'offre"));
+    const perso = session || comptesIci().includes(liste.id); // on ne voit ici que ses propres réservations
+    const t = el("span", "txt"); t.append(el("b", null, perso ? "Tu l'offres" : "Réservé"), el("small", null, perso ? "C'est toi qui l'as réservé" : "Quelqu'un l'offre"));
     ok.append(el("span", "check", "✓"), t); z.append(ok);
     if (fete === id){ fete = null; confettis(z); }
     const b = bouton("resa-link", aConfirmer === id ? "Oui, annuler la réservation" : "Annuler",
