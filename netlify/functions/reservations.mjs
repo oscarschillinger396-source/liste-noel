@@ -16,8 +16,12 @@ const MAX_PROFILS = 30;
 // Les thèmes qu'on peut choisir pour sa liste : le fond de la page, et le style des cartes
 const FONDS = ["sapin", "polaire", "bordeaux", "chocolat", "galaxie", "minuit", "nuitnoel", "vinchaud", "givre", "bonbon", "cheminee", "lutin"];
 const STYLES_LISTE = ["course", "dore", "sucre", "glace", "foret", "pull", "houx", "paillettes", "bonbon", "lutin", "neige", "cadeau", "etoile", "gui"];
+// La couleur du prénom, et deux options qu'on allume ou pas : les effets néon et le mode sombre
+const PSEUDOS = ["neige", "rouge", "or", "vert", "bleu", "rose", "violet", "orange"];
 const themeDe = p => ({ fond: FONDS.includes(p?.theme?.fond) ? p.theme.fond : "sapin",
-  liste: STYLES_LISTE.includes(p?.theme?.liste) ? p.theme.liste : "course" });
+  liste: STYLES_LISTE.includes(p?.theme?.liste) ? p.theme.liste : "course",
+  pseudo: PSEUDOS.includes(p?.theme?.pseudo) ? p.theme.pseudo : "neige",
+  neon: p?.theme?.neon === true, sombre: p?.theme?.sombre === true });
 const MAX_CADEAUX = 60;
 const DUREE_SESSION = 60 * 24 * 3600 * 1000; // 60 jours
 
