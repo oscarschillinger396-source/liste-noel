@@ -275,6 +275,7 @@ footer small{color:var(--frost);font-size:14px}
 .choix-t{font-family:var(--display);font-size:30px;line-height:1.05;transform:skewX(-6deg)}
 .choix-d{font-size:16px;color:#3c524a}
 @media (prefers-reduced-motion:no-preference){ .choix-carte{transition:transform .15s ease} .choix-carte:hover{transform:translateY(-3px)} }
+.choix-carte.bloque{opacity:.6;filter:grayscale(.6)}
 
 /* Couleur du prénom : chacun choisit la sienne (sur le titre de sa liste, sa carte et en haut quand il est connecté) */
 .pseudo{color:var(--pseudo, inherit)}
@@ -556,8 +557,10 @@ async function aller(){
   if (h.startsWith("liste-")){ vue = "liste"; vueId = h.slice(6); }
   else if (h.startsWith("modifier-") && estAdmin()){ vue = "ma-liste"; cible = h.slice(9); }
   else if (["connexion", "inscription", "ma-liste"].includes(h)){ vue = h; if (h === "ma-liste" && session) cible = session.profil.id; }
-  else if (h === "invite"){ choisirInvite(true); location.hash = "accueil"; return; }
+  else if (h === "invite"){ if (comptesIci().length){ location.hash = "connexion"; return; } choisirInvite(true); location.hash = "accueil"; return; }
   else { vue = "accueil"; }
+  // Quelqu'un s'est déjà connecté à son compte sur ce téléphone : on n'y entre plus en invité
+  if (invite && !session && comptesIci().length) choisirInvite(false);
   // Pas connecté et pas encore entré en invité : on montre d'abord l'écran d'entrée
   if (!session && !invite && (vue === "accueil" || vue === "liste")){ vueApres = vue === "liste" ? h : null; vue = "bienvenue"; }
   if (vue === "ma-liste" && !session){ location.hash = "connexion"; return; }
@@ -706,7 +709,11 @@ function vueBienvenue(main){
     b.append(el("span", "choix-i", icone), el("span", "choix-t", titre), el("span", "choix-d", texte));
     b.onclick = action; return b;
   };
-  g.append(carte("👀", "Mode invité", "Regarder les listes et réserver un cadeau. Pas besoin de mot de passe.", () => {
+  if (comptesIci().length){
+    // Ce téléphone est enregistré : quelqu'un s'y est connecté à son compte. Pas de mode invité (sinon on pourrait voir les réservations)
+    const b = carte("🔒", "Mode invité", "Pas sur ce téléphone : quelqu'un s'y est déjà connecté à son compte. Connecte-toi avec ton prénom et ton code.", () => { location.hash = "connexion"; });
+    b.classList.add("bloque"); g.append(b);
+  } else g.append(carte("👀", "Mode invité", "Regarder les listes et réserver un cadeau. Pas besoin de mot de passe.", () => {
     choisirInvite(true);
     if (vueApres){ const h = vueApres; vueApres = null; if (location.hash === "#" + h) aller(); else location.hash = h; }
     else if (location.hash === "#accueil") aller(); else location.hash = "accueil";
