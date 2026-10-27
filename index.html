@@ -922,9 +922,11 @@ function interieur(){
     <rect x="40" y="190" width="24" height="24" rx="3" fill="#fff"/><path d="M64 196 q10 0 10 7 q0 7 -10 7" stroke="#fff" stroke-width="4" fill="none"/><rect x="42" y="190" width="20" height="5" fill="#7a4220"/>
     <path class="vapeur" d="M48 184 q-6 -10 0 -18 M56 184 q6 -10 0 -18" stroke="#fff" stroke-width="2" fill="none" opacity=".7"/>
   </svg><p>Bienvenue ! Viens te réchauffer près du feu… Un chocolat chaud ? ☕</p>`;
-  const fermer = bouton("btn small", "Ressortir ❄️", () => fond.remove());
+  const feu = BRUITS.feu();
+  const sortir = () => { fond.remove(); feu.then(f => f && f.arreter()); };
+  const fermer = bouton("btn small", "Ressortir ❄️", sortir);
   boite.append(fermer); fond.append(boite);
-  fond.onclick = e => { if (e.target === fond) fond.remove(); };
+  fond.onclick = e => { if (e.target === fond) sortir(); };
   document.body.append(fond);
 }
 // Les bruitages des décorations (sons Mixkit et Freesound, dans le dossier « sons »)
@@ -947,22 +949,42 @@ function tampon(a, n){
   chargerSons();
   return sonsPrets[n] = sonsPrets[n] || sonsBruts[n].then(b => b && a.decodeAudioData(b.slice(0))).catch(() => null);
 }
-// Joue un son : un peu plus tard (« apres »), à partir d'un moment (« depuis »), pendant « duree », avec un fondu au début et à la fin
-async function jouer(n, { fort = 1, apres = 0, depuis = 0, duree, entree = .01, fondu = .3 } = {}){
+// Sur téléphone, le son n'a le droit de démarrer qu'au moment où on lève le doigt :
+// on débloque donc le son à ce moment-là (sinon la toute première chose touchée resterait muette)
+function debloquerSon(){
+  if (!document.body.dataset.deco) return;
   const a = son(); if (!a) return;
-  const b = await tampon(a, n); if (!b) return;
+  const s = a.createBufferSource(); s.buffer = a.createBuffer(1, 1, 22050); s.connect(a.destination); s.start(0);
+}
+["pointerup", "touchend", "click"].forEach(t => document.addEventListener(t, debloquerSon, { passive: true }));
+// Joue un son : un peu plus tard (« apres »), à partir d'un moment (« depuis »), pendant « duree », avec un fondu au début et à la fin.
+// Avec « boucle », il tourne jusqu'à ce qu'on l'arrête (renvoie de quoi l'arrêter)
+async function jouer(n, { fort = 1, apres = 0, depuis = 0, duree, entree = .01, fondu = .3, boucle = false } = {}){
+  const a = son(); if (!a) return null;
+  const b = await tampon(a, n); if (!b) return null;
+  if (a.state !== "running")
+    await Promise.race([new Promise(r => a.addEventListener("statechange", r, { once: true })), new Promise(r => setTimeout(r, 1500))]);
+  if (a.state !== "running") return null;
   const t = a.currentTime + apres, d = Math.min(duree ?? b.duration, b.duration - depuis);
   const g = a.createGain();
   g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(fort, t + entree);
-  g.gain.setValueAtTime(fort, Math.max(t + entree, t + d - fondu)); g.gain.linearRampToValueAtTime(0, t + d);
   g.connect(a.destination);
-  const s = a.createBufferSource(); s.buffer = b; s.connect(g); s.start(t, depuis, d);
+  const s = a.createBufferSource(); s.buffer = b; s.connect(g);
+  if (boucle){
+    s.loop = true; s.loopStart = depuis; s.loopEnd = b.duration - .3; s.start(t, depuis);
+    return { arreter(){ const f = a.currentTime; g.gain.cancelScheduledValues(f); g.gain.setValueAtTime(g.gain.value, f); g.gain.linearRampToValueAtTime(0, f + .6); s.stop(f + .7); } };
+  }
+  g.gain.setValueAtTime(fort, Math.max(t + entree, t + d - fondu)); g.gain.linearRampToValueAtTime(0, t + d);
+  s.start(t, depuis, d);
+  return null;
 }
 // Chaque son est raccourci et réglé pour qu'ils aient tous à peu près le même volume
 const BRUITS = {
-  sapin(){ jouer("sapin"); jouer("clochettes", { fort: .35, apres: .1, duree: 2.2, fondu: .8 }); },
+  // Les branches d'abord, puis la clochette une fois les branches finies (pas en même temps)
+  sapin(){ jouer("sapin"); jouer("clochettes", { fort: .35, apres: .75, duree: 2.2, fondu: .8 }); },
   traineau(){ jouer("hohoho"); jouer("grelots", { fort: .6, apres: .7 }); },
-  feu(){ jouer("feu", { fort: 10, depuis: .2, duree: 4.5, entree: .4, fondu: 1.2 }); },
+  // Le feu crépite tant qu'on reste dans la maison
+  feu(){ return jouer("feu", { fort: 10, depuis: .5, entree: .6, boucle: true }); },
   bonhomme(){ jouer("bonhomme", { fort: .5, duree: 1.2 }); },
   cadeau(){ jouer("papier", { fort: 1.4, depuis: .3, duree: 1.2 }); jouer("fete", { fort: .9, apres: .8, duree: 2.6, fondu: .8 }); },
   filante(){ jouer("etoile", { fort: 1.1, duree: 1.3, fondu: .4 }); }
@@ -973,7 +995,7 @@ function animerDeco(d){
   d.querySelectorAll(".sapin-g").forEach(g => g.addEventListener("pointerdown", e => { rejouer(g, "secoue"); flocons(e.clientX, e.clientY); BRUITS.sapin(); }));
   d.querySelectorAll(".traineau-vol").forEach(t => t.addEventListener("pointerdown", e => { rejouer(t, "looping"); BRUITS.traineau(); bulle(e.clientX, e.clientY - 20, "Ho ho ho ! 🎅"); etincelles(e.clientX, e.clientY, ["#ffe9a8", "#fff", "#ffd062"]); }));
   d.querySelectorAll(".lune-g").forEach(g => g.addEventListener("pointerdown", e => { rejouer(g, "brille"); etoileFilante(e.clientX - 20, e.clientY + 10); BRUITS.filante(); }));
-  d.querySelectorAll(".maison-g").forEach(g => g.addEventListener("pointerdown", () => { rejouer(g, "ouvre"); BRUITS.feu(); setTimeout(interieur, 350); }));
+  d.querySelectorAll(".maison-g").forEach(g => g.addEventListener("pointerdown", () => { rejouer(g, "ouvre"); setTimeout(interieur, 350); }));
   d.querySelectorAll(".bonhomme-g").forEach(g => g.addEventListener("pointerdown", e => { rejouer(g, "salue"); BRUITS.bonhomme(); bulle(e.clientX, e.clientY - 30, hasard(PAROLES)); }));
   d.querySelectorAll(".paquet-g").forEach(g => g.addEventListener("pointerdown", e => {
     const ouvert = g.classList.toggle("ouvert");
