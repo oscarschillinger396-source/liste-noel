@@ -927,8 +927,10 @@ function interieur(){
   fond.onclick = e => { if (e.target === fond) fond.remove(); };
   document.body.append(fond);
 }
-// Les petits bruitages des décorations, fabriqués directement par le navigateur (aucun fichier son à charger)
+// Les bruitages des décorations (sons Mixkit et Freesound, dans le dossier « sons »)
+const FICHIERS_SONS = { sapin: "sapin", clochettes: "clochettes", hohoho: "hohoho", grelots: "grelots", feu: "feu", bonhomme: "bonhomme", papier: "papier", fete: "fete", etoile: "etoile" };
 let audio = null;
+const sonsBruts = {}, sonsPrets = {};
 function son(){
   try{
     audio = audio || new (window.AudioContext || window.webkitAudioContext)();
@@ -936,85 +938,34 @@ function son(){
     return audio;
   }catch{ return null; }
 }
-// Un bruit blanc d'une durée donnée (pour le froissement, le feu, le papier)
-function bruit(a, duree){
-  const b = a.createBuffer(1, Math.ceil(a.sampleRate * duree), a.sampleRate), d = b.getChannelData(0);
-  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-  const s = a.createBufferSource(); s.buffer = b; return s;
+// On télécharge les sons dès qu'une décoration s'affiche, pour qu'ils partent tout de suite au premier toucher
+function chargerSons(){
+  for (const [n, f] of Object.entries(FICHIERS_SONS))
+    sonsBruts[n] = sonsBruts[n] || fetch("sons/" + f + ".mp3").then(r => r.ok ? r.arrayBuffer() : null).catch(() => null);
 }
-// Une enveloppe de volume : monte vite, puis s'éteint doucement
-function volume(a, t, fort, monte, duree){
+function tampon(a, n){
+  chargerSons();
+  return sonsPrets[n] = sonsPrets[n] || sonsBruts[n].then(b => b && a.decodeAudioData(b.slice(0))).catch(() => null);
+}
+// Joue un son : un peu plus tard (« apres »), à partir d'un moment (« depuis »), pendant « duree », avec un fondu au début et à la fin
+async function jouer(n, { fort = 1, apres = 0, depuis = 0, duree, entree = .01, fondu = .3 } = {}){
+  const a = son(); if (!a) return;
+  const b = await tampon(a, n); if (!b) return;
+  const t = a.currentTime + apres, d = Math.min(duree ?? b.duration, b.duration - depuis);
   const g = a.createGain();
-  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(fort, t + monte); g.gain.exponentialRampToValueAtTime(0.0001, t + duree);
-  g.connect(a.destination); return g;
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(fort, t + entree);
+  g.gain.setValueAtTime(fort, Math.max(t + entree, t + d - fondu)); g.gain.linearRampToValueAtTime(0, t + d);
+  g.connect(a.destination);
+  const s = a.createBufferSource(); s.buffer = b; s.connect(g); s.start(t, depuis, d);
 }
-// Une note de clochette
-function clochette(a, t, freq, fort = .12, duree = .5){
-  [1, 2.76].forEach((k, i) => {
-    const o = a.createOscillator(); o.type = "sine"; o.frequency.value = freq * k;
-    o.connect(volume(a, t, fort / (i + 1), .005, duree)); o.start(t); o.stop(t + duree);
-  });
-}
+// Chaque son est raccourci et réglé pour qu'ils aient tous à peu près le même volume
 const BRUITS = {
-  // Les branches qui se secouent, et les boules qui tintent
-  sapin(){
-    const a = son(); if (!a) return; const t = a.currentTime;
-    [0, .12, .22].forEach((d, i) => {
-      const s = bruit(a, .35), f = a.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = 2500 + i * 900; f.Q.value = .8;
-      s.connect(f); f.connect(volume(a, t + d, .22, .03, .32)); s.start(t + d);
-    });
-    [1568, 2093, 1760, 2349].forEach((n, i) => clochette(a, t + .15 + i * .09, n, .05, .4));
-  },
-  // Le père Noël : « Ho ho ho ! » avec une grosse voix, et les grelots du traîneau
-  traineau(){
-    const a = son(); if (!a) return; const t = a.currentTime;
-    [0, .32, .64].forEach((d, i) => {
-      const o = a.createOscillator(); o.type = "sawtooth";
-      o.frequency.setValueAtTime(150 - i * 8, t + d); o.frequency.exponentialRampToValueAtTime(95, t + d + .26);
-      const fin = volume(a, t + d, .5, .03, .28);
-      [[480, 6], [820, 8]].forEach(([fq, q]) => { const f = a.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = fq; f.Q.value = q; o.connect(f); f.connect(fin); });
-      o.start(t + d); o.stop(t + d + .3);
-    });
-    for (let i = 0; i < 10; i++) clochette(a, t + 1 + i * .07 + Math.random() * .02, i % 2 ? 2637 : 3136, .05, .25);
-  },
-  // Le feu qui crépite dans la cheminée
-  feu(){
-    const a = son(); if (!a) return; const t = a.currentTime, duree = 3;
-    const s = bruit(a, duree), f = a.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = 400;
-    s.connect(f); f.connect(volume(a, t, .18, .3, duree)); s.start(t);
-    for (let i = 0; i < 26; i++){
-      const d = Math.random() * (duree - .3), c = bruit(a, .03), h = a.createBiquadFilter();
-      h.type = "highpass"; h.frequency.value = 1500 + Math.random() * 3000;
-      c.connect(h); h.connect(volume(a, t + d, .06 + Math.random() * .12, .002, .03)); c.start(t + d);
-    }
-  },
-  // Le bonhomme de neige rigole : un petit « boing » et trois notes joyeuses
-  bonhomme(){
-    const a = son(); if (!a) return; const t = a.currentTime;
-    const o = a.createOscillator(); o.type = "sine";
-    o.frequency.setValueAtTime(220, t); o.frequency.exponentialRampToValueAtTime(660, t + .12); o.frequency.exponentialRampToValueAtTime(330, t + .3);
-    o.connect(volume(a, t, .25, .01, .32)); o.start(t); o.stop(t + .35);
-    [784, 988, 1175].forEach((n, i) => {
-      const b = a.createOscillator(); b.type = "triangle"; b.frequency.value = n;
-      b.connect(volume(a, t + .35 + i * .11, .14, .01, .12)); b.start(t + .35 + i * .11); b.stop(t + .5 + i * .11);
-    });
-  },
-  // Le papier cadeau qu'on déchire, puis « ta-da ! »
-  cadeau(){
-    const a = son(); if (!a) return; const t = a.currentTime;
-    const s = bruit(a, .35), f = a.createBiquadFilter(); f.type = "bandpass"; f.Q.value = 1.5;
-    f.frequency.setValueAtTime(1200, t); f.frequency.exponentialRampToValueAtTime(5000, t + .3);
-    s.connect(f); f.connect(volume(a, t, .35, .02, .33)); s.start(t);
-    [523, 659, 784, 1047].forEach((n, i) => clochette(a, t + .35 + i * .08, n, .1, i === 3 ? .9 : .35));
-  },
-  // L'étoile filante : un sifflement qui descend, plein de paillettes
-  filante(){
-    const a = son(); if (!a) return; const t = a.currentTime;
-    const o = a.createOscillator(); o.type = "sine";
-    o.frequency.setValueAtTime(2600, t); o.frequency.exponentialRampToValueAtTime(700, t + 1);
-    o.connect(volume(a, t, .08, .05, 1)); o.start(t); o.stop(t + 1.05);
-    for (let i = 0; i < 9; i++) clochette(a, t + i * .1, 3520 - i * 220, .045, .35);
-  }
+  sapin(){ jouer("sapin"); jouer("clochettes", { fort: .35, apres: .1, duree: 2.2, fondu: .8 }); },
+  traineau(){ jouer("hohoho"); jouer("grelots", { fort: .6, apres: .7 }); },
+  feu(){ jouer("feu", { fort: 10, depuis: .2, duree: 4.5, entree: .4, fondu: 1.2 }); },
+  bonhomme(){ jouer("bonhomme", { fort: .5, duree: 1.2 }); },
+  cadeau(){ jouer("papier", { fort: 1.4, depuis: .3, duree: 1.2 }); jouer("fete", { fort: .9, apres: .8, duree: 2.6, fondu: .8 }); },
+  filante(){ jouer("etoile", { fort: 1.1, duree: 1.3, fondu: .4 }); }
 };
 const PAROLES = ["Coucou ! 👋", "Brrr, il fait froid !", "Joyeux Noël ! 🎄", "J'adore la neige ❄️", "Un câlin ? (pas trop serré…)", "Tu as fait ta liste ?", "Mon nez, c'est une carotte 🥕"];
 const SURPRISES = ["🧸", "🏎️", "🎮", "🍫", "🚂", "⛸️", "🎧", "📚", "🪀", "🎨", "⚽", "🦄"];
@@ -1043,6 +994,7 @@ function afficherDeco(id){
   const d = $("#deco"); if (!d) return;
   d.innerHTML = (DECOS[id] || DECOS.aucune).dessin();
   document.body.dataset.deco = id === "aucune" ? "" : id;
+  if (id !== "aucune") chargerSons();
   animerDeco(d);
 }
 
