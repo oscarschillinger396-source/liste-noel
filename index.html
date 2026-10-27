@@ -48,6 +48,25 @@ body{margin:0;min-height:100vh;color:var(--snow);font-family:var(--body);font-si
 
 #snow{position:fixed;inset:0;pointer-events:none;z-index:1}
 
+/* Décorations : des scènes de Noël dessinées derrière la page (sapins, traîneau, village…) */
+#deco{position:fixed;inset:0;pointer-events:none;z-index:2;overflow:hidden}
+#deco .sol{position:absolute;left:0;right:0;bottom:0;width:100%;height:min(30vh,260px);opacity:.7}
+#deco .ciel{position:absolute;top:calc(110px + env(safe-area-inset-top, 0px));right:-30px;width:min(30vw,260px);height:auto;opacity:.85}
+#deco .lumiere{animation:none}
+@media (prefers-reduced-motion:no-preference){
+  #deco .traineau{animation:traineau 38s linear infinite}
+  @keyframes traineau{from{transform:translateX(110vw) translateY(0)}50%{transform:translateX(30vw) translateY(-18px)}to{transform:translateX(-60vw) translateY(10px)}}
+  #deco .scintille{animation:scintille 2.4s ease-in-out infinite alternate}
+  #deco .scintille:nth-of-type(3n){animation-delay:.8s} #deco .scintille:nth-of-type(3n+1){animation-delay:1.6s}
+  @keyframes scintille{to{opacity:.25}}
+  #deco .filante{animation:filante 9s ease-in 2s infinite}
+  @keyframes filante{0%{transform:translate(0,0);opacity:0}4%{opacity:1}14%{transform:translate(-380px,180px);opacity:0}100%{opacity:0}}
+  #deco .fumee{animation:fumee 5s ease-out infinite}
+  #deco .fumee:nth-child(2n){animation-delay:2.5s}
+  @keyframes fumee{from{transform:translateY(0) scale(.6);opacity:.55}to{transform:translateY(-40px) scale(1.4);opacity:0}}
+}
+#deco .traineau-boite{position:absolute;top:calc(70px + env(safe-area-inset-top, 0px));left:0;width:100%;height:120px}
+
 .wrap{position:relative;z-index:3;max-width:860px;margin:0 auto;padding-block:84px 56px;display:grid;gap:44px}
 
 /* Damier */
@@ -386,6 +405,7 @@ body[data-neoncouleur="arcenciel"] .slot:nth-child(6n), body[data-neoncouleur="a
 .option[aria-pressed="true"]{color:var(--snow);box-shadow:inset 0 0 0 2px var(--gold)}
 .option[aria-pressed="true"] .inter{background:var(--gold)}
 .option[aria-pressed="true"] .inter::after{left:19px;background:#fff}
+.pastille.deco-choix .rond{display:grid;place-items:center;font-size:30px;background:linear-gradient(180deg,#1b3566,#0b1a33)}
 .pastille.pseudo-choix .rond{display:grid;place-items:center;font:400 26px var(--display);background:#0d1512 !important}
 
 /* Bouton magique */
@@ -442,6 +462,7 @@ body[data-neoncouleur="arcenciel"] .slot:nth-child(6n), body[data-neoncouleur="a
 <body>
 <div class="lights" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
 <canvas id="snow" aria-hidden="true"></canvas>
+<div id="deco" aria-hidden="true"></div>
 
 <div class="wrap">
   <nav class="nav" id="nav" aria-label="Compte"></nav>
@@ -491,14 +512,25 @@ function joliListe(l){ return l ? {...l, prenom: joli(l.prenom)} : l; }
 function lien(href, cls, texte){ const a = el("a", cls, texte); a.href = href; return a; }
 function bouton(cls, texte, onclick){ const b = el("button", cls, texte); b.type = "button"; b.onclick = onclick; return b; }
 
-function lireSession(){ try{ return JSON.parse(localStorage.getItem("session")) || null; }catch{ return null; } }
+// La connexion ne dure que le temps de l'onglet : on ferme le site (ou le navigateur), on est déconnecté.
+// (sessionStorage s'efface tout seul à la fermeture, contrairement à localStorage)
+function lireSession(){ try{ localStorage.removeItem("session"); return JSON.parse(sessionStorage.getItem("session")) || null; }catch{ return null; } }
 function lireInvite(){ try{ return localStorage.getItem("invite") === "1"; }catch{ return false; } }
 function choisirInvite(oui){ invite = oui; try{ oui ? localStorage.setItem("invite", "1") : localStorage.removeItem("invite"); }catch{} }
 function ecrireSession(s){
   session = s;
-  try{ s ? localStorage.setItem("session", JSON.stringify(s)) : localStorage.removeItem("session"); }catch{}
+  try{ s ? sessionStorage.setItem("session", JSON.stringify(s)) : sessionStorage.removeItem("session"); }catch{}
   if (s) retenirCompte(s.profil.id);
 }
+// On quitte l'appli plus de 5 minutes : à son retour, on est déconnecté.
+// (un aller-retour rapide, pour copier le lien d'un cadeau par exemple, ne déconnecte pas)
+const ABSENCE_MAX = 5 * 60 * 1000;
+let partiA = 0;
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden){ partiA = Date.now(); return; }
+  if (session && partiA && Date.now() - partiA > ABSENCE_MAX){ deconnecter(); msg = {}; }
+  partiA = 0;
+});
 // Les comptes qui se sont connectés sur ce téléphone. En invité, on n'y verra pas les réservations
 // de leurs listes (sinon on pourrait tricher en passant en invité) ; les autres listes restent normales.
 function comptesIci(){ try{ const l = JSON.parse(localStorage.getItem("comptesIci") || "[]"); return Array.isArray(l) ? l : []; }catch{ return []; } }
@@ -635,6 +667,107 @@ const PSEUDOS = {
   orange: { nom: "Orange", clair: "#ffa24d", fonce: "#c25a08" },
 };
 const pseudoDe = t => PSEUDOS[t && t.pseudo] || null;
+/* ---------- Décorations : des scènes de Noël dessinées (en SVG) derrière la page ---------- */
+const sol = (y = 262) => `<path d="M0 ${y} Q150 ${y - 20} 300 ${y - 4} T600 ${y - 8} T900 ${y} T1200 ${y - 10} V300 H0Z" fill="#eef4f8"/>
+  <path d="M0 ${y + 14} Q200 ${y + 2} 420 ${y + 12} T820 ${y + 10} T1200 ${y + 14} V300 H0Z" fill="#dbe7ef"/>`;
+// Un sapin : trois étages, de la neige sur chaque étage, une étoile et parfois des guirlandes
+function sapin(x, base, h, { c = "#0f4a30", etoile = false, lumieres = false } = {}){
+  let s = `<rect x="${x - h * .05}" y="${base - h * .14}" width="${h * .1}" height="${h * .16}" fill="#4a2e1e"/>`;
+  for (let i = 0; i < 3; i++){
+    const haut = base - h + i * h * .25, bas = haut + h * .45, l = h * (.17 + .11 * i);
+    s += `<polygon points="${x},${haut} ${x - l},${bas} ${x + l},${bas}" fill="${c}"/>`;
+    s += `<polygon points="${x},${haut} ${x - l * .42},${haut + h * .19} ${x - l * .15},${haut + h * .15} ${x},${haut + h * .2} ${x + l * .2},${haut + h * .14} ${x + l * .42},${haut + h * .19}" fill="#f4f8fb" opacity=".9"/>`;
+    if (lumieres) ["#ff4655", "#ffd062", "#62d4ff", "#7bf08a"].forEach((col, k) =>
+      s += `<circle class="scintille" cx="${x - l * .7 + k * l * .47}" cy="${bas - h * .07 + (k % 2) * h * .03}" r="${Math.max(2, h * .022)}" fill="${col}"/>`);
+  }
+  if (etoile) s += `<polygon points="${x},${base - h - h * .09} ${x + h * .03},${base - h - h * .02} ${x + h * .09},${base - h - h * .02} ${x + h * .04},${base - h + h * .02} ${x + h * .06},${base - h + h * .09} ${x},${base - h + h * .05} ${x - h * .06},${base - h + h * .09} ${x - h * .04},${base - h + h * .02} ${x - h * .09},${base - h - h * .02} ${x - h * .03},${base - h - h * .02}" fill="#ffd062"/>`;
+  return s;
+}
+const svgSol = contenu => `<svg class="sol" viewBox="0 0 1200 300" preserveAspectRatio="xMidYMax slice">${contenu}</svg>`;
+const lune = (x, y, r) => `<circle cx="${x}" cy="${y}" r="${r * 1.9}" fill="#fff6d6" opacity=".08"/><circle cx="${x}" cy="${y}" r="${r * 1.35}" fill="#fff6d6" opacity=".1"/>
+  <circle cx="${x}" cy="${y}" r="${r}" fill="#fdf3cf"/><circle cx="${x - r * .3}" cy="${y - r * .2}" r="${r * .14}" fill="#efe2b4"/><circle cx="${x + r * .25}" cy="${y + r * .3}" r="${r * .1}" fill="#efe2b4"/>`;
+// Un renne qui galope vers la gauche (le premier a le nez rouge : c'est Rudolph)
+const renne = (x, y, nez) => `<g transform="translate(${x} ${y})" fill="#1a0f0a" stroke="#1a0f0a" stroke-linecap="round">
+  <ellipse cx="0" cy="0" rx="20" ry="8"/><path d="M-16 -3 L-24 -14" stroke-width="5"/><ellipse cx="-27" cy="-16" rx="7" ry="5"/>
+  <path d="M-25 -20 l-4 -10 m2 5 l-5 -2 M-21 -20 l2 -10 m-1 5 l4 -3" stroke-width="2" fill="none"/>
+  <path d="M-12 5 l-9 9 M-6 6 l-4 11 M10 5 l6 11 M15 4 l11 7" stroke-width="3" fill="none"/>
+  ${nez ? `<circle cx="-34" cy="-15" r="3" fill="#ff2a3a" stroke="none"/><circle cx="-34" cy="-15" r="7" fill="#ff2a3a" opacity=".3" stroke="none"/>` : ""}</g>`;
+const DECOS = {
+  aucune:   { nom: "Aucune",          icone: "🚫", dessin: () => "" },
+  sapins:   { nom: "Forêt de sapins", icone: "🌲", dessin: () => {
+    let s = "";
+    [[40, 210, 120], [150, 215, 95], [260, 205, 130], [390, 212, 100], [520, 208, 125], [660, 214, 95], [790, 206, 130], [920, 212, 105], [1050, 208, 125], [1160, 214, 100]]
+      .forEach(([x, b, h]) => s += sapin(x, b, h, { c: "#0b3323" }));
+    [[90, 262, 170, true], [330, 266, 140], [600, 262, 190, true], [860, 266, 150], [1110, 262, 175, true]]
+      .forEach(([x, b, h, l]) => s += sapin(x, b, h, { c: "#11552f", etoile: l, lumieres: l }));
+    return svgSol(`<path d="M0 225 Q300 195 600 220 T1200 215 V300 H0Z" fill="#cfdde8" opacity=".55"/>${s}${sol()}`);
+  } },
+  traineau: { nom: "Traîneau",        icone: "🛷", dessin: () =>
+    `<svg class="ciel" viewBox="0 0 400 260">${lune(250, 120, 70)}</svg>
+     <svg class="traineau-boite" viewBox="0 0 1200 120" preserveAspectRatio="xMinYMid meet"><g class="traineau">
+       ${renne(40, 60, true)}${renne(105, 66)}${renne(170, 60)}
+       <path d="M58 60 L240 70 M122 66 L240 72 M187 60 L240 70" stroke="#e8c87a" stroke-width="1.2"/>
+       <path d="M236 92 q0 8 12 8 h88 q14 0 16 -14" stroke="#1a0f0a" stroke-width="4" fill="none"/>
+       <path d="M244 88 q-4 -30 18 -30 h56 q20 0 22 -20 h10 q2 50 -24 50z" fill="#9b1522"/>
+       <circle cx="292" cy="40" r="9" fill="#f2d2b8"/><path d="M282 36 q10 -22 22 -4z" fill="#d81f2e"/><circle cx="306" cy="30" r="3" fill="#fff"/>
+       <path d="M280 58 q12 -14 26 0z" fill="#d81f2e"/><path d="M286 46 q6 10 12 0" fill="#fff"/>
+       <rect x="310" y="44" width="16" height="14" rx="2" fill="#2f8a5f"/><rect x="316" y="44" width="4" height="14" fill="#f2c35b"/>
+     </g></svg>
+     ${svgSol(sapin(1080, 262, 120, { c: "#0b3323" }) + sapin(1150, 266, 90, { c: "#0b3323" }) + sapin(70, 266, 100, { c: "#0b3323" }) + sol())}` },
+  village:  { nom: "Village",         icone: "🏘️", dessin: () => {
+    const maison = (x, w, h, mur, toit) => {
+      const b = 262, t = b - h;
+      return `<rect x="${x + w * .62}" y="${t - h * .45}" width="${w * .12}" height="${h * .35}" fill="#3a2a22"/>
+        <circle class="fumee" cx="${x + w * .68}" cy="${t - h * .5}" r="8" fill="#e8eef3"/><circle class="fumee" cx="${x + w * .7}" cy="${t - h * .55}" r="6" fill="#e8eef3"/>
+        <rect x="${x}" y="${t}" width="${w}" height="${h}" fill="${mur}"/>
+        <polygon points="${x - 10},${t + 2} ${x + w / 2},${t - h * .55} ${x + w + 10},${t + 2}" fill="${toit}"/>
+        <polyline points="${x - 10},${t + 2} ${x + w / 2},${t - h * .55} ${x + w + 10},${t + 2}" fill="none" stroke="#f4f8fb" stroke-width="7" stroke-linejoin="round"/>
+        <rect class="scintille" x="${x + w * .15}" y="${t + h * .2}" width="${w * .22}" height="${h * .25}" fill="#ffd36b"/>
+        <rect class="scintille" x="${x + w * .63}" y="${t + h * .2}" width="${w * .22}" height="${h * .25}" fill="#ffd36b"/>
+        <rect x="${x + w * .4}" y="${t + h * .5}" width="${w * .2}" height="${h * .5}" fill="#4a2e1e"/>
+        <circle cx="${x + w * .5}" cy="${t + h * .38}" r="${w * .06}" fill="#2f8a5f" stroke="#d81f2e" stroke-width="2"/>`;
+    };
+    return svgSol(`${sapin(30, 262, 110)}${maison(90, 130, 90, "#7a2a2a", "#3a1414")}${sapin(270, 262, 90)}${maison(320, 110, 75, "#2f4a6a", "#1a2a3e")}
+      ${maison(520, 150, 100, "#6b4a2a", "#3a2614")}${sapin(710, 262, 130, { lumieres: true, etoile: true })}${maison(780, 120, 80, "#2f5a3e", "#163322")}
+      ${maison(960, 130, 95, "#7a5a2a", "#3e2c12")}${sapin(1150, 262, 100)}${sol()}`);
+  } },
+  bonhommes:{ nom: "Bonshommes de neige", icone: "⛄", dessin: () => {
+    const bonhomme = (x, e, echarpe) => { const b = 262;
+      return `<circle cx="${x}" cy="${b - 38 * e}" r="${40 * e}" fill="#f7fbfe" stroke="#cfdde8" stroke-width="3"/>
+        <circle cx="${x}" cy="${b - 98 * e}" r="${28 * e}" fill="#f7fbfe" stroke="#cfdde8" stroke-width="3"/>
+        <circle cx="${x}" cy="${b - 142 * e}" r="${20 * e}" fill="#f7fbfe" stroke="#cfdde8" stroke-width="3"/>
+        <rect x="${x - 16 * e}" y="${b - 176 * e}" width="${32 * e}" height="${20 * e}" fill="#1b1b22"/><rect x="${x - 24 * e}" y="${b - 158 * e}" width="${48 * e}" height="${5 * e}" fill="#1b1b22"/>
+        <circle cx="${x - 7 * e}" cy="${b - 146 * e}" r="${2.6 * e}" fill="#1b1b22"/><circle cx="${x + 7 * e}" cy="${b - 146 * e}" r="${2.6 * e}" fill="#1b1b22"/>
+        <polygon points="${x},${b - 140 * e} ${x + 22 * e},${b - 136 * e} ${x},${b - 134 * e}" fill="#ff8a2a"/>
+        <path d="M${x - 20 * e} ${b - 124 * e} q${20 * e} ${10 * e} ${40 * e} 0 l${-6 * e} ${30 * e} l${-8 * e} 0 l${2 * e} ${-24 * e}" fill="${echarpe}"/>
+        <circle cx="${x}" cy="${b - 105 * e}" r="${3 * e}" fill="#1b1b22"/><circle cx="${x}" cy="${b - 90 * e}" r="${3 * e}" fill="#1b1b22"/>
+        <path d="M${x - 26 * e} ${b - 100 * e} l${-34 * e} ${-24 * e} M${x + 26 * e} ${b - 100 * e} l${34 * e} ${-28 * e}" stroke="#5a3a22" stroke-width="${4 * e}" stroke-linecap="round"/>`; };
+    return svgSol(`${sapin(80, 262, 140, { lumieres: true })}${bonhomme(250, 1, "#d81f2e")}${sapin(430, 262, 110)}${bonhomme(600, .8, "#2f8a5f")}
+      ${sapin(760, 262, 150, { etoile: true, lumieres: true })}${bonhomme(950, 1.05, "#2f7fd6")}${sapin(1130, 262, 120)}${sol()}`);
+  } },
+  cadeaux:  { nom: "Montagne de cadeaux", icone: "🎁", dessin: () => {
+    const paquet = (x, y, w, h, c, r) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="3" fill="${c}"/><rect x="${x + w / 2 - 5}" y="${y}" width="10" height="${h}" fill="${r}"/>
+      <rect x="${x}" y="${y + h * .35}" width="${w}" height="9" fill="${r}"/><ellipse cx="${x + w / 2 - 11}" cy="${y - 6}" rx="12" ry="7" fill="${r}"/><ellipse cx="${x + w / 2 + 11}" cy="${y - 6}" rx="12" ry="7" fill="${r}"/><circle cx="${x + w / 2}" cy="${y - 4}" r="5" fill="${r}"/>`;
+    const tas = x => paquet(x, 190, 90, 72, "#d81f2e", "#f2c35b") + paquet(x + 95, 205, 70, 57, "#2f8a5f", "#f7f4ee") + paquet(x + 30, 135, 64, 55, "#2f7fd6", "#f2c35b") + paquet(x + 100, 160, 48, 45, "#f2c35b", "#d81f2e");
+    return svgSol(`${tas(20)}${sapin(330, 262, 150, { lumieres: true, etoile: true })}${tas(470)}${sapin(760, 262, 120, { lumieres: true })}${tas(900)}${sol(266)}`);
+  } },
+  etoiles:  { nom: "Ciel étoilé",     icone: "⭐", dessin: () => {
+    let s = lune(1080, 90, 46);
+    const etoile = (x, y, r) => `<polygon class="scintille" points="${x},${y - r} ${x + r * .28},${y - r * .28} ${x + r},${y} ${x + r * .28},${y + r * .28} ${x},${y + r} ${x - r * .28},${y + r * .28} ${x - r},${y} ${x - r * .28},${y - r * .28}" fill="#fff6d6"/>`;
+    [[80, 60, 9], [210, 140, 6], [330, 50, 11], [470, 120, 7], [560, 40, 5], [690, 150, 9], [800, 70, 6], [930, 180, 8], [380, 220, 5], [140, 250, 7], [620, 260, 6], [880, 280, 5], [1010, 230, 7], [1150, 200, 9], [260, 300, 5], [500, 330, 7], [760, 320, 6]]
+      .forEach(([x, y, r]) => s += etoile(x, y, r));
+    s += `<g class="filante"><line x1="900" y1="40" x2="980" y2="0" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity=".9"/><circle cx="900" cy="40" r="3" fill="#fff"/></g>`;
+    return `<svg style="position:absolute;inset:0;width:100%;height:60vh" viewBox="0 0 1200 380" preserveAspectRatio="xMidYMin slice">${s}</svg>
+      ${svgSol(sapin(60, 266, 110, { c: "#0b3323" }) + sapin(1140, 266, 120, { c: "#0b3323" }) + sol(270))}`;
+  } },
+};
+let decoAffichee = null;
+function afficherDeco(id){
+  if (decoAffichee === id) return;
+  decoAffichee = id;
+  const d = $("#deco"); if (d) d.innerHTML = (DECOS[id] || DECOS.aucune).dessin();
+}
+
 // Les couleurs des néons (deux couleurs qui se répondent), à part de la couleur du prénom
 const NEONS = {
   rose:      { nom: "Rose & cyan",   c: ["#ff3df0", "#3df2ff"] },
@@ -660,6 +793,7 @@ function appliquerTheme(){
   b.dataset.neon = t.neon ? "1" : "";
   b.dataset.neoncouleur = t.neon ? (NEONS[t.neonCouleur] ? t.neonCouleur : "rose") : "";
   b.dataset.sombre = t.sombre ? "1" : "";
+  afficherDeco(DECOS[t.deco] ? t.deco : "aucune");
   const p = pseudoDe(t), moi = session && pseudoDe(session.profil.theme);
   p ? b.style.setProperty("--pseudo", p.clair) : b.style.removeProperty("--pseudo");
   moi ? b.style.setProperty("--pseudo-moi", moi.clair) : b.style.removeProperty("--pseudo-moi");
@@ -1497,6 +1631,15 @@ function choixThemes(autre){
   };
   rangee("Fond de la page", FONDS, "fond", i => "linear-gradient(160deg," + i.couleurs[0] + "," + i.couleurs[1] + ")");
   rangee("Style de la liste", STYLES_LISTE, "liste", i => i.apercu);
+  // Les décorations : une scène dessinée derrière la page
+  box.append(el("h3", null, "Décorations"));
+  const pd = el("div", "pastilles");
+  Object.entries(DECOS).forEach(([id, info]) => {
+    const b = bouton("pastille deco-choix", null, () => changerTheme({...t, deco: id}));
+    b.setAttribute("aria-pressed", (t.deco || "aucune") === id);
+    b.append(el("span", "rond", info.icone), info.nom); pd.append(b);
+  });
+  box.append(pd);
   // La couleur du prénom : une pastille avec l'initiale, dans la couleur
   box.append(el("h3", null, "Couleur du prénom"));
   const pp = el("div", "pastilles");

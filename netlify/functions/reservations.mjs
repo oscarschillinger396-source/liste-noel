@@ -20,11 +20,13 @@ const STYLES_LISTE = ["course", "dore", "sucre", "glace", "foret", "pull", "houx
 const PSEUDOS = ["neige", "rouge", "or", "vert", "bleu", "rose", "violet", "orange"];
 // La couleur des néons, à part de celle du prénom
 const NEONS = ["rose", "cyan", "violet", "vert", "or", "rouge", "bleu", "sapin", "arcenciel"];
+// Les décorations dessinées derrière la page
+const DECOS = ["aucune", "sapins", "traineau", "village", "bonhommes", "cadeaux", "etoiles"];
 const themeDe = p => ({ fond: FONDS.includes(p?.theme?.fond) ? p.theme.fond : "sapin",
   liste: STYLES_LISTE.includes(p?.theme?.liste) ? p.theme.liste : "course",
   pseudo: PSEUDOS.includes(p?.theme?.pseudo) ? p.theme.pseudo : "neige",
   neon: p?.theme?.neon === true, neonCouleur: NEONS.includes(p?.theme?.neonCouleur) ? p.theme.neonCouleur : "rose",
-  sombre: p?.theme?.sombre === true });
+  sombre: p?.theme?.sombre === true, deco: DECOS.includes(p?.theme?.deco) ? p.theme.deco : "aucune" });
 const MAX_CADEAUX = 60;
 const DUREE_SESSION = 60 * 24 * 3600 * 1000; // 60 jours
 
