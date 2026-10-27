@@ -261,13 +261,7 @@ footer small{color:var(--frost);font-size:14px}
 .rang-lien{display:flex;gap:8px;align-items:stretch}
 .rang-lien input{flex:1;min-width:0}
 .rang-lien .effacer-lien{flex:none;text-transform:none;letter-spacing:.02em}
-.rang-lien .coller-btn{flex:none;font-size:15px;padding:9px 14px}
-.rang-lien{flex-wrap:wrap}
-.rang-lien input{flex-basis:100%}
-.apercu-capture{display:grid;gap:8px;justify-items:start}
-.apercu-capture img{max-width:100%;max-height:260px;border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,.25)}
-.apercu-capture .pied-capture{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:14px}
-.copier-btn{font:700 13px var(--label);letter-spacing:.08em;text-transform:uppercase;cursor:pointer;border:0;border-radius:8px;padding:7px 12px;
+.rang-lien .coller-btn{flex:none;font-size:15px;padding:9px 14px}.copier-btn{font:700 13px var(--label);letter-spacing:.08em;text-transform:uppercase;cursor:pointer;border:0;border-radius:8px;padding:7px 12px;
   background:#e6efe9;color:#1d4a3d;white-space:nowrap}
 .copier-btn:hover{background:#d3e4da}
 
@@ -849,29 +843,19 @@ function vueMaListe(main){
       $("#g-info-lien").textContent = "Ton navigateur ne me laisse pas lire ce que tu as copié : appuie longuement dans la case (ou Ctrl + V), puis « Coller ».";
     }
   });
-  // « 📸 Capture » : une capture d'écran de la page du produit, lue directement sur le téléphone
-  const fichierCapture = el("input"); fichierCapture.type = "file"; fichierCapture.accept = "image/*"; fichierCapture.hidden = true;
-  fichierCapture.onchange = () => { const f = fichierCapture.files && fichierCapture.files[0]; fichierCapture.value = ""; if (f) lireCapture(f); };
-  const capture = bouton("btn small coller-btn", "📸 Capture", () => fichierCapture.click());
-  capture.title = "Choisir une capture d'écran du produit";
-  const rangLien = el("div", "rang-lien"); rangLien.append(blocLien.querySelector("input"), coller, capture, effacer, fichierCapture);
+  const rangLien = el("div", "rang-lien"); rangLien.append(blocLien.querySelector("input"), coller, effacer);
   blocLien.append(rangLien);
   blocLien.style.gridColumn = "1 / -1"; // le lien prend toute la largeur, le prix passe en dessous
   ligne.append(blocLien);
   ligne.append(champ("g-prix", "Prix (€)", "text", {inputMode: "decimal", placeholder: "Ex. 49,99", value: c && c.prix != null ? String(c.prix).replace(".", ",") : ""}));
   f.append(ligne);
   const infoLien = el("p", "aide"); infoLien.id = "g-info-lien";
-  infoLien.textContent = c ? "" : "Colle le lien du produit. Si le prix ne vient pas : fais une capture d'écran de la page du produit, puis appuie sur « 📸 Capture ».";
+  infoLien.textContent = c ? "" : "Colle le lien du produit : le nom et le prix se remplissent tout seuls.";
   f.append(infoLien);
-  const apercu = el("div", "apercu-capture"); apercu.id = "g-capture"; apercu.hidden = true;
-  f.append(apercu);
   const champLien = blocLien.querySelector("#g-lien");
   autoRempli = {}; dernierLienLu = c ? (c.lien || "") : "";
   champLien.addEventListener("change", () => remplirDepuisLien());
   champLien.addEventListener("paste", e => {
-    // Une image collée (capture d'écran copiée) : on la lit comme avec « 📸 Capture »
-    const image = e.clipboardData && [...e.clipboardData.files].find(x => /^image\//.test(x.type));
-    if (image){ e.preventDefault(); lireCapture(image); return; }
     const t = e.clipboardData && e.clipboardData.getData("text");
     // Une page entière collée (pas juste un lien) : on la lit au lieu de la mettre dans la case
     if (t && !estUnLien(t)){ e.preventDefault(); recevoirCollage(t); return; }
@@ -1126,10 +1110,10 @@ function lireTextePage(texte){
 }
 
 // On a collé quelque chose : un lien, ou toute une page
-function recevoirCollage(texte, depuisCapture){
+function recevoirCollage(texte){
   const champ = $("#g-lien"), info = $("#g-info-lien");
   if (!champ) return;
-  if (!depuisCapture && estUnLien(texte)){ champ.value = texte.trim(); remplirDepuisLien(); return; }
+  if (estUnLien(texte)){ champ.value = texte.trim(); remplirDepuisLien(); return; }
   const r = lireTextePage(texte);
   if (r.lien && !champ.value.trim()){ champ.value = r.lien; dernierLienLu = r.lien; }
   const adresse = lireAdresse(champ.value.trim());
@@ -1146,84 +1130,51 @@ function recevoirCollage(texte, depuisCapture){
   if (ajouts.length) mettreAuto("g-precisions", ajouts.join(", "));
   const et = l => l.join(", ").replace(/, ([^,]*)$/, " et $1");
   info.textContent = trouve.length
-    ? "✅ J'ai trouvé " + et(trouve) + (depuisCapture ? " sur la capture" : " dans la page") + ". Vérifie, puis clique sur « Ajouter »." + (champ.value.trim() ? "" : " Pense à coller aussi le lien du produit.")
-    : depuisCapture
-      ? "Je n'arrive pas à lire cette capture. Refais-la avec le nom et le prix bien visibles, ou écris-les à la main."
-      : "Je n'ai rien trouvé dans ce texte. Fais plutôt une capture d'écran de la page du produit et appuie sur « 📸 Capture ».";
+    ? "✅ J'ai trouvé " + et(trouve) + " dans la page. Vérifie, puis clique sur « Ajouter »." + (champ.value.trim() ? "" : " Pense à coller aussi le lien du produit.")
+    : "Je n'ai rien trouvé dans ce texte. Colle le lien du produit, ou écris le nom et le prix à la main.";
 }
 
-/* ---------- Capture d'écran ----------
-   La capture est lue sur le téléphone lui-même (elle n'est envoyée nulle part), puis effacée au bout d'une minute. */
-let lecteurCapture = null, minuteurCapture = null;
-function chargerLecteur(){
-  if (window.Tesseract) return Promise.resolve();
-  if (!lecteurCapture) lecteurCapture = new Promise((ok, ko) => {
-    const s = document.createElement("script");
-    s.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
-    s.onload = ok; s.onerror = () => { lecteurCapture = null; ko(); };
-    document.head.append(s);
-  });
-  return lecteurCapture;
-}
-async function lireCapture(fichier){
-  const zone = $("#g-capture"), info = $("#g-info-lien");
-  if (!zone || !info) return;
-  // L'aperçu, avec le compte à rebours avant qu'il s'efface
-  clearInterval(minuteurCapture);
-  const url = URL.createObjectURL(fichier);
-  const img = el("img"); img.src = url; img.alt = "Ta capture d'écran";
-  const compte = el("span", "compte");
-  const effacerCapture = () => {
-    clearInterval(minuteurCapture); URL.revokeObjectURL(url);
-    if (zone.contains(img)){ zone.replaceChildren(); zone.hidden = true; }
-  };
-  const fermer = bouton("btn ghost small", "✕ Effacer la capture", effacerCapture);
-  zone.replaceChildren(img, el("div", "pied-capture"));
-  zone.lastChild.append(compte, fermer);
-  zone.hidden = false;
-  let reste = 60;
-  const majCompte = () => { compte.textContent = "🕐 S'efface dans " + reste + " s"; };
-  majCompte();
-  minuteurCapture = setInterval(() => { reste--; if (reste <= 0) effacerCapture(); else majCompte(); }, 1000);
-
-  info.textContent = "🔎 Je lis la capture… (la première fois, ça peut prendre 10 à 20 secondes)";
-  try{
-    await chargerLecteur();
-    const lecteur = await Tesseract.createWorker("fra");
-    const { data } = await lecteur.recognize(fichier);
-    await lecteur.terminate();
-    // Les lecteurs d'image confondent parfois « € » avec « E » ou « e »
-    const texte = (data.text || "").replace(/(\d[.,]\d{2}) ?[Ee€](?![a-zé])/g, "$1 €").replace(/(\d) ?[Ee€](\d{2})(?!\d)/g, "$1 €$2");
-    if (!$("#g-capture")) return; // on a quitté la page entre-temps
-    recevoirCollage(texte, true);
-  }catch{
-    info.textContent = "Je n'ai pas pu lire la capture (pas de connexion ?). Réessaie, ou écris le nom et le prix à la main.";
-  }
-}
 
 // Le nom du cadeau, juste l'essentiel : sans la couleur, sans la description après la virgule.
 // « Veste de ski et snowboard chaude et imperméable homme, 100 noir » → « Veste de ski et snowboard chaude et imperméable homme »
 const COULEURS_NOM = COULEURS.replace(/\|or\|/, "|") + "|dorée|argenté|argentée|écru|anthracite|camel|blanc cassé|bleu marine|bleu nuit";
-function nomEssentiel(nom){
-  let n = String(nom || "").replace(/\s+/g, " ").trim();
-  // On garde le début, mais au moins 3 mots (« Playstation Sony, Manette 5… » → « Playstation Sony Manette 5 Officielle DualSense »)
-  const morceaux = n.split(/\s[:|–]\s|\s-\s|,\s/).map(m => m.trim()).filter(Boolean);
-  let debut = morceaux[0] || "", i = 1;
-  while (debut.split(" ").length < 3 && i < morceaux.length) debut += " " + morceaux[i++];
-  if (debut.length >= 6) n = debut;
-  n = n.replace(new RegExp("\\b(" + COULEURS_NOM + ")(\\s+(et|/)\\s+(" + COULEURS_NOM + "))*\\b", "gi"), " ")
+// Un morceau du nom, sans ce qui ne sert à rien pour reconnaître le cadeau
+function nettoyerMorceauNom(m){
+  return m.replace(new RegExp("\\b(" + COULEURS_NOM + ")(\\s+(et|/)\\s+(" + COULEURS_NOM + "))*\\b", "gi"), " ")
     // Les détails techniques : « (version 2024) », « 7 kg », « 128 Go », « 1400 W », « 32 cm », les références « WW70FG3M05AWEF »
-    .replace(/\([^)]*\)|\[[^\]]*\]/g, " ")
+    .replace(/\([^)]*\)?|\[[^\]]*\]?/g, " ")
     .replace(/\b\d+([.,]\d+)?\s?(kg|g|go|to|mo|w|v|mah|cm|mm|m|l|ml|cl|pouces?|"|trs?\/min|hz|ghz|mp|%)(?![a-zà-ÿ])/gi, " ")
     .replace(/(?<![\w-])(?=[a-z0-9]*\d)(?=[a-z0-9]*[a-z])[a-z0-9]{7,}(?![\w-])/gi, " ")
-    .replace(/\b(pour )?(homme|femme|mixte|unisexe|adulte|gar[çc]on|fille)s?\b/gi, " ")
-    .replace(/\s+/g, " ").replace(/^[\s,/-]+|[\s,/-]+$/g, "").trim();
+    // Les mots de pub : « sans fil », « Bluetooth », « officielle », « édition »… et tout ce qui vient après « pour » ou « compatible »
+    .replace(/\b(sans[ -]fils?|wireless|bluetooth|filaire|officiel(le)?|original(e)?|nouveaux?|nouvelles?|neuve?s?|[ée]dition|version|haute pr[ée]cision|premium|carbone)\b/gi, " ")
+    .replace(/\b(à |a )?(r[ée]duction (active )?de bruit|anti-?bruit|noise cancelling)\b.*$/i, " ")
+    .replace(/\b(pour|compatibles?|for|avec)\b.*$/i, " ")
+    .replace(/\bcontroller\b/gi, "Manette")
+    .replace(/\b(homme|femme|mixte|unisexe|adulte|gar[çc]on|fille)s?\b/gi, " ")
+    .replace(/\s+/g, " ").replace(/^[\s,/&+-]+|[\s,/&+-]+$/g, "").trim();
+}
+function nomEssentiel(nom){
+  let n = String(nom || "").replace(/\s+/g, " ").trim();
+  // Le nom est découpé là où les boutiques ajoutent des détails (« - », « – », « | », « , », « + »).
+  // On garde les premiers morceaux jusqu'à avoir au moins 3 vrais mots :
+  // « Xbox Manette sans Fil - Elite Series 2 – Core (Blanc) Series X… » → « Xbox Manette » + « Elite Series 2 »
+  const morceaux = n.split(/\s*[–|:]\s*|\s-\s|,\s|\s\+\s/).map(nettoyerMorceauNom).filter(Boolean);
+  if (morceaux.length){
+    let debut = morceaux[0], i = 1;
+    while (debut.split(" ").length < 3 && i < morceaux.length) debut += " " + morceaux[i++];
+    n = debut;
+  }
+  // La manette PS5 : « Playstation Sony Manette 5 DualSense » → « Manette PS5 DualSense »
+  if (/dualsense/i.test(n)) n = "Manette PS5 DualSense" + (/\bedge\b/i.test(n) ? " Edge" : "");
+  // Le type d'objet devant : « Xbox Manette Elite Series 2 », « SCUF Valor Pro Manette » → « Manette … »
+  const objet = n.match(/\s(manette|casque|console|clavier|souris|enceinte)\b(?! \d)/i);
+  if (objet) n = objet[1].charAt(0).toUpperCase() + objet[1].slice(1).toLowerCase() + " " + n.replace(objet[0], "").trim();
   // Un nom tout en MAJUSCULES : on le remet en minuscules
   // (mais « EA SPORTS FC 27 » reste comme ça : c'est une marque)
   if (n === n.toUpperCase() && n.split(" ").filter(m => /^[A-ZÀ-Ý]{4,}$/.test(m)).length >= 2) n = n.toLowerCase();
-  // 6 mots au plus, sans finir sur un petit mot (« de », « et », « pour »…)
+  // 5 mots au plus, sans finir sur un petit mot (« de », « et », « pour »…)
   let mots = n.split(" ");
-  if (mots.length > 6) mots = mots.slice(0, 6);
+  if (mots.length > 5) mots = mots.slice(0, 5);
   while (mots.length > 2 && /^(de|du|des|et|pour|avec|à|a|en|le|la|les|l'|d'|sans|sur|au|aux|-|\/|&)$/i.test(mots[mots.length - 1])) mots.pop();
   n = mots.join(" ");
   return n ? n.charAt(0).toUpperCase() + n.slice(1) : String(nom || "").trim();
@@ -1279,7 +1230,8 @@ async function remplirDepuisLien(){
   if (!r.taille && !/taille|pointure/i.test(prec.value) && /sweat|veste|pull|pantalon|jean|chaussure|basket|sneaker|t shirt|tee|robe|manteau|blouson|combinaison|gant|maillot|short|jogg/i.test(r.nom || "")) manque.push("la taille");
   const et = l => l.join(", ").replace(/, ([^,]*)$/, " et $1");
   info.textContent = (trouve.length ? "✅ J'ai rempli " + et(trouve) + ". " : "")
-    + (manque.length === 2 ? "✍️ Ce site ne donne ni le prix ni la taille : écris-les à la main."
+    + (r.bloque && !r.prix ? "🔒 Ce site bloque la lecture automatique : écris le prix à la main (ou fais « Tout sélectionner » puis « Copier » sur la page du produit, et colle ici)."
+      : manque.length === 2 ? "✍️ Ce site ne donne ni le prix ni la taille : écris-les à la main."
       : manque.length ? "✍️ Ce site ne donne pas " + manque[0] + " : écris-" + (manque[0] === "la taille" ? "la" : "le") + " à la main."
       : "Vérifie, puis clique sur le bouton.");
 }
