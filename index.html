@@ -930,12 +930,20 @@ function interieur(){
   document.body.append(fond);
 }
 // Les bruitages des décorations (sons Mixkit et Freesound, dans le dossier « sons »)
-const FICHIERS_SONS = { sapin: "sapin", clochettes: "clochettes", hohoho: "hohoho", grelots: "grelots", feu: "feu", bonhomme: "bonhomme", papier: "papier", fete: "fete", etoile: "etoile" };
-let audio = null;
+const FICHIERS_SONS = { sapin: "sapin", hohoho: "hohoho", grelots: "grelots", feu: "feu", bonhomme: "bonhomme", papier: "papier", fete: "fete", etoile: "etoile" };
+let audio = null, sortie = null;
 const sonsBruts = {}, sonsPrets = {};
 function son(){
   try{
-    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    if (!audio){
+      audio = new (window.AudioContext || window.webkitAudioContext)();
+      // Tous les sons passent par un limiteur : aucun pic ne peut faire mal aux oreilles
+      sortie = audio.createDynamicsCompressor();
+      sortie.threshold.value = -12; sortie.knee.value = 6; sortie.ratio.value = 12; sortie.attack.value = .003; sortie.release.value = .25;
+      // le limiteur remonte un peu le volume tout seul : on redescend l'ensemble pour rester doux
+      const general = audio.createGain(); general.gain.value = .6;
+      sortie.connect(general); general.connect(audio.destination);
+    }
     if (audio.state === "suspended") audio.resume();
     return audio;
   }catch{ return null; }
@@ -968,7 +976,7 @@ async function jouer(n, { fort = 1, apres = 0, depuis = 0, duree, entree = .01, 
   const t = a.currentTime + apres, d = Math.min(duree ?? b.duration, b.duration - depuis);
   const g = a.createGain();
   g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(fort, t + entree);
-  g.connect(a.destination);
+  g.connect(sortie || a.destination);
   const s = a.createBufferSource(); s.buffer = b; s.connect(g);
   if (boucle){
     s.loop = true; s.loopStart = depuis; s.loopEnd = b.duration - .3; s.start(t, depuis);
@@ -978,16 +986,17 @@ async function jouer(n, { fort = 1, apres = 0, depuis = 0, duree, entree = .01, 
   s.start(t, depuis, d);
   return null;
 }
-// Chaque son est raccourci et réglé pour qu'ils aient tous à peu près le même volume
+// Chaque son est raccourci, et son volume est mesuré puis réglé pour qu'on les entende tous pareil
+// (même volume perçu, environ -20 LUFS ; les grelots et le papier un peu en dessous car ils accompagnent)
 const BRUITS = {
-  // Un sapin qu'on secoue, rejoué en entier à chaque toucher (enregistré bas, d'où le volume poussé)
-  sapin(){ jouer("sapin", { fort: 4 }); },
-  traineau(){ jouer("hohoho"); jouer("grelots", { fort: .6, apres: .7 }); },
-  // Le feu crépite tant qu'on reste dans la maison
-  feu(){ return jouer("feu", { fort: 10, depuis: .5, entree: .6, boucle: true }); },
-  bonhomme(){ jouer("bonhomme", { fort: .5, duree: 1.2 }); },
-  cadeau(){ jouer("papier", { fort: 1.4, depuis: .3, duree: 1.2 }); jouer("fete", { fort: .9, apres: .8, duree: 2.6, fondu: .8 }); },
-  filante(){ jouer("etoile", { fort: 1.1, duree: 1.3, fondu: .4 }); }
+  // Un sapin qu'on secoue (coupé à 1,2 s : la fin de l'enregistrement a un petit bruit bizarre)
+  sapin(){ jouer("sapin", { fort: 4, duree: 1.2, fondu: .15 }); },
+  traineau(){ jouer("hohoho"); jouer("grelots", { fort: .32, apres: .7 }); },
+  // Le feu crépite tant qu'on reste dans la maison (en fond, plus doux)
+  feu(){ return jouer("feu", { fort: 12, depuis: .5, entree: .6, boucle: true }); },
+  bonhomme(){ jouer("bonhomme", { fort: .31, duree: 1.2 }); },
+  cadeau(){ jouer("papier", { fort: 1.48, depuis: .3, duree: 1.2 }); jouer("fete", { fort: .6, apres: .8, duree: 2.6, fondu: .8 }); },
+  filante(){ jouer("etoile", { fort: .83, duree: 1.3, fondu: .4 }); }
 };
 const PAROLES = ["Coucou ! 👋", "Brrr, il fait froid !", "Joyeux Noël ! 🎄", "J'adore la neige ❄️", "Un câlin ? (pas trop serré…)", "Tu as fait ta liste ?", "Mon nez, c'est une carotte 🥕"];
 const SURPRISES = ["🧸", "🏎️", "🎮", "🍫", "🚂", "⛸️", "🎧", "📚", "🪀", "🎨", "⚽", "🦄"];
