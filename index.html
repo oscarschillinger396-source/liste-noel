@@ -280,7 +280,8 @@ footer small{color:var(--frost);font-size:14px}
 /* Couleur du prénom : chacun choisit la sienne (sur le titre de sa liste, sa carte et en haut quand il est connecté) */
 .pseudo{color:var(--pseudo, inherit)}
 .profil .nom{color:var(--pseudo-carte, var(--night))}
-.statut b{color:var(--pseudo-moi, inherit)}
+.statut b{color:var(--pseudo-moi, var(--gold))}
+.btn.ghost.sur-carte{color:var(--night);box-shadow:inset 0 0 0 2px #c9d6cf}
 
 /* Option « Néon » : tout s'allume, dans la couleur du prénom (rouge par défaut) */
 body[data-neon="1"]{--neon:var(--pseudo, #ff4d5a)}
@@ -312,6 +313,16 @@ body[data-sombre="1"] .chip{background:#163a26;color:#8fe3ad;box-shadow:inset 0 
 body[data-sombre="1"] .chip:nth-child(3n+2){background:#3e1418;color:#ff9aa3;box-shadow:inset 0 0 0 1px #6e2630}
 body[data-sombre="1"] .chip:nth-child(3n){background:#3a2c0c;color:#f2c35b;box-shadow:inset 0 0 0 1px #6a5218}
 body[data-sombre="1"] .profil .nom{color:var(--pseudo-carte-clair, var(--carte-texte))}
+/* En mode sombre : ce qui était écrit en noir passe en blanc, et ce qui était blanc passe en sombre */
+body[data-sombre="1"] .btn.ghost.sur-carte{color:var(--carte-texte);box-shadow:inset 0 0 0 2px #3a4c62}
+body[data-sombre="1"] .slot .btn.danger{color:#ff7a84;box-shadow:inset 0 0 0 2px #7a2a33}
+body[data-sombre="1"] .profil .voir{color:#ff7a84}
+body[data-sombre="1"] .resa-link, body[data-sombre="1"] .resa-msg{color:var(--carte-doux)}
+body[data-sombre="1"] .resa-msg.err{color:#ff7a84}
+body[data-sombre="1"] .resa-ok .check{background:var(--carte-2);color:#5fe08c}
+body[data-sombre="1"] .info h3, body[data-sombre="1"] .price, body[data-sombre="1"] .choix-t{color:var(--carte-texte)}
+body[data-sombre="1"] .info a{color:#9fd3ff}
+body[data-sombre="1"] .cell.go .v{color:#ff5a66}
 
 /* Les deux options dans « Mes thèmes » */
 .options{display:flex;flex-wrap:wrap;gap:10px}
@@ -1065,7 +1076,7 @@ function vueMaListe(main){
       if (aSupprimer === x.id) sauver(liste.cadeaux.filter(y => y.id !== x.id), "Cadeau supprimé.").then(err => { if (err) render(); });
       else { aSupprimer = x.id; render(); }
     }));
-    outils.querySelectorAll(".btn.ghost").forEach(b => { b.style.color = "var(--night)"; b.style.boxShadow = "inset 0 0 0 2px #c9d6cf"; });
+    outils.querySelectorAll(".btn.ghost").forEach(b => b.classList.add("sur-carte"));
     ol.append(carteCadeau(x, i, outils));
   });
   droite.append(ol);
