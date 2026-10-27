@@ -14,8 +14,8 @@ import { scryptSync, randomBytes, timingSafeEqual, createHmac } from "node:crypt
 const ADMINS = ["oscar"];
 const MAX_PROFILS = 30;
 // Les thèmes qu'on peut choisir pour sa liste : le fond de la page, et le style des cartes
-const FONDS = ["sapin", "polaire", "bordeaux", "chocolat", "galaxie", "minuit"];
-const STYLES_LISTE = ["course", "dore", "sucre", "glace", "foret", "pull", "houx"];
+const FONDS = ["sapin", "polaire", "bordeaux", "chocolat", "galaxie", "minuit", "nuitnoel", "vinchaud", "givre", "bonbon", "cheminee", "lutin"];
+const STYLES_LISTE = ["course", "dore", "sucre", "glace", "foret", "pull", "houx", "paillettes", "bonbon", "lutin", "neige", "cadeau", "etoile", "gui"];
 const themeDe = p => ({ fond: FONDS.includes(p?.theme?.fond) ? p.theme.fond : "sapin",
   liste: STYLES_LISTE.includes(p?.theme?.liste) ? p.theme.liste : "course" });
 const MAX_CADEAUX = 60;
@@ -396,7 +396,11 @@ export default async (req) => {
 
   const id = chemin[1];
   if (!profils[id]) return erreur("Cette liste n'existe pas.", 404);
-  const moi = await qui(req, s);
+  const jeton = await qui(req, s);
+  const moi = jeton && profils[jeton.id] ? jeton : null;
+  // C'est la surprise : les personnes connectées à leur compte ne voient que leurs propres réservations.
+  // Seuls les invités (les parents…) voient tout, pour s'organiser.
+  const visibles = resa => moi ? Object.fromEntries(Object.entries(resa).filter(([, r]) => r.par === moi.id)) : resa;
   const proprietaire = moi && moi.id === id;
   const admin = !!(moi && ADMINS.includes(moi.id) && profils[moi.id]);
 
@@ -425,7 +429,7 @@ export default async (req) => {
   // Une liste
   if (req.method === "GET" && chemin.length === 2){
     const cadeaux = (await s.get("liste-" + id, { type: "json" })) || [];
-    const resa = proprietaire ? null : ((await s.get("resa-" + id, { type: "json" })) || {});
+    const resa = proprietaire ? null : visibles((await s.get("resa-" + id, { type: "json" })) || {});
     return json({ id, prenom: profils[id].prenom, theme: themeDe(profils[id]), cadeaux, reservations: resa });
   }
 
@@ -451,11 +455,18 @@ export default async (req) => {
     const cadeaux = (await s.get("liste-" + id, { type: "json" })) || [];
     if (!cadeaux.some(c => c.id === body.cadeau)) return erreur("Ce cadeau n'existe plus.", 404);
     const resa = (await s.get("resa-" + id, { type: "json" })) || {};
-    if (body.action === "reserver") resa[body.cadeau] = resa[body.cadeau] || { le: new Date().toISOString() };
-    else if (body.action === "annuler") delete resa[body.cadeau];
-    else return erreur("Action inconnue");
+    const deja = resa[body.cadeau];
+    if (body.action === "reserver"){
+      // Quelqu'un d'autre l'a déjà pris (la personne connectée ne pouvait pas le voir) : on le dit
+      if (deja && !(moi && deja.par === moi.id)) return erreur("Ce cadeau est déjà réservé par quelqu'un d'autre. Choisis-en un autre !", 409);
+      resa[body.cadeau] = deja || { le: new Date().toISOString(), ...(moi ? { par: moi.id } : {}) };
+    } else if (body.action === "annuler"){
+      // Une personne connectée ne peut annuler que ce qu'elle a réservé elle-même
+      if (deja && moi && deja.par !== moi.id) return erreur("Tu ne peux annuler que tes propres réservations.", 403);
+      delete resa[body.cadeau];
+    } else return erreur("Action inconnue");
     await s.setJSON("resa-" + id, resa);
-    return json({ reservations: resa });
+    return json({ reservations: visibles(resa) });
   }
 
   return erreur("Adresse inconnue", 404);
