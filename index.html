@@ -262,6 +262,11 @@ footer small{color:var(--frost);font-size:14px}
 .rang-lien input{flex:1;min-width:0}
 .rang-lien .effacer-lien{flex:none;text-transform:none;letter-spacing:.02em}
 .rang-lien .coller-btn{flex:none;font-size:15px;padding:9px 14px}
+.rang-lien{flex-wrap:wrap}
+.rang-lien input{flex-basis:100%}
+.apercu-capture{display:grid;gap:8px;justify-items:start}
+.apercu-capture img{max-width:100%;max-height:260px;border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,.25)}
+.apercu-capture .pied-capture{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:14px}
 .copier-btn{font:700 13px var(--label);letter-spacing:.08em;text-transform:uppercase;cursor:pointer;border:0;border-radius:8px;padding:7px 12px;
   background:#e6efe9;color:#1d4a3d;white-space:nowrap}
 .copier-btn:hover{background:#d3e4da}
@@ -844,19 +849,29 @@ function vueMaListe(main){
       $("#g-info-lien").textContent = "Ton navigateur ne me laisse pas lire ce que tu as copié : appuie longuement dans la case (ou Ctrl + V), puis « Coller ».";
     }
   });
-  const rangLien = el("div", "rang-lien"); rangLien.append(blocLien.querySelector("input"), coller, effacer);
+  // « 📸 Capture » : une capture d'écran de la page du produit, lue directement sur le téléphone
+  const fichierCapture = el("input"); fichierCapture.type = "file"; fichierCapture.accept = "image/*"; fichierCapture.hidden = true;
+  fichierCapture.onchange = () => { const f = fichierCapture.files && fichierCapture.files[0]; fichierCapture.value = ""; if (f) lireCapture(f); };
+  const capture = bouton("btn small coller-btn", "📸 Capture", () => fichierCapture.click());
+  capture.title = "Choisir une capture d'écran du produit";
+  const rangLien = el("div", "rang-lien"); rangLien.append(blocLien.querySelector("input"), coller, capture, effacer, fichierCapture);
   blocLien.append(rangLien);
   blocLien.style.gridColumn = "1 / -1"; // le lien prend toute la largeur, le prix passe en dessous
   ligne.append(blocLien);
   ligne.append(champ("g-prix", "Prix (€)", "text", {inputMode: "decimal", placeholder: "Ex. 49,99", value: c && c.prix != null ? String(c.prix).replace(".", ",") : ""}));
   f.append(ligne);
   const infoLien = el("p", "aide"); infoLien.id = "g-info-lien";
-  infoLien.textContent = c ? "" : "Colle le lien du produit. Si le prix ne vient pas : sur la page du produit, fais « Tout sélectionner » puis « Copier », et recolle ici.";
+  infoLien.textContent = c ? "" : "Colle le lien du produit. Si le prix ne vient pas : fais une capture d'écran de la page du produit, puis appuie sur « 📸 Capture ».";
   f.append(infoLien);
+  const apercu = el("div", "apercu-capture"); apercu.id = "g-capture"; apercu.hidden = true;
+  f.append(apercu);
   const champLien = blocLien.querySelector("#g-lien");
   autoRempli = {}; dernierLienLu = c ? (c.lien || "") : "";
   champLien.addEventListener("change", () => remplirDepuisLien());
   champLien.addEventListener("paste", e => {
+    // Une image collée (capture d'écran copiée) : on la lit comme avec « 📸 Capture »
+    const image = e.clipboardData && [...e.clipboardData.files].find(x => /^image\//.test(x.type));
+    if (image){ e.preventDefault(); lireCapture(image); return; }
     const t = e.clipboardData && e.clipboardData.getData("text");
     // Une page entière collée (pas juste un lien) : on la lit au lieu de la mettre dans la case
     if (t && !estUnLien(t)){ e.preventDefault(); recevoirCollage(t); return; }
@@ -988,25 +1003,101 @@ function nomUtile(nom, lien){
 function estUnLien(t){ const s = t.trim(); return !/\s/.test(s) && /^(https?:\/\/|www\.)/i.test(s); }
 
 function lireTextePage(texte){
-  const lignes = texte.replace(/ /g, " ").split(/\r?\n/).map(l => l.replace(/\s+/g, " ").trim()).filter(Boolean);
+  const brutes = texte.replace(/ /g, " ").split(/\r?\n/).map(l => l.replace(/\s+/g, " ").trim()).filter(Boolean);
+  // Recolle les prix coupés en morceaux : « 18 » / « , » / « 95€ » (Amazon), « 44 » / « € » / « , » / « 97 » (Leclerc)…
+  const lignes = [];
+  const debut = /^\d{1,4}(\s?€)?$/, suite = /^(€|[,.]|[,.]?\d{2}|€\s?[,.]?\d{2}|[,.]\d{2}\s?€|\d{2}\s?€)$/;
+  for (let i = 0; i < brutes.length; i++){
+    let fait = false;
+    for (let n = 4; n >= 2 && !fait; n--){
+      const m = brutes.slice(i, i + n);
+      if (m.length < n || !debut.test(m[0]) || !m.slice(1).every(x => suite.test(x))) continue;
+      const j = m.join("").replace(/\s/g, "");
+      if (/^\d{1,4}(€[,.]?\d{2}|[,.]\d{2}€|€)$/.test(j)){ lignes.push(j.replace(/^(\d+)€[,.]?(\d{2})$/, "$1,$2 €")); i += n - 1; fait = true; }
+    }
+    // « 51 € , 49 » sur une seule ligne → « 51,49 € »
+    if (!fait) lignes.push(brutes[i].replace(/(?<![\d,.])(\d{1,4})\s?€\s?[,.]\s?(\d{2})(?!\d)/g, "$1,$2 €"));
+  }
   const r = {};
   // Un lien dans le texte collé (certains navigateurs l'ajoutent)
   const lien = texte.match(/https?:\/\/[^\s"<>]+/);
   if (lien) r.lien = lien[0];
   // Les prix : « 49,99 € », « 49 € », « € 49.99 », « 1 299,99 € »… sauf livraison, mensualités, anciens prix
-  const pasUnPrix = /livraison|offert|dès |à partir|économi|au lieu|avant|barré|ancien|\/ ?mois|par mois|mois|x ?\d|crédit|financ|retrait|frais|remise|réduction|-\s?\d+ ?%|éco-?part|ecopart|reprise|carte cadeau|code|cashback|rembours|soit |prix public|pvc|ppc|jusqu/i;
-  const motif = /(?:€\s?(\d{1,4}(?:[ .]\d{3})*(?:[,.]\d{1,2})?)(?![\d,.]))|(?:(?<![\d,.])(\d{1,4}(?:[ .]\d{3})*(?:[,.]\d{1,2})?)\s?(?:€|EUR\b))/gi;
+  const pasUnPrix = /livraison|offert|dès |à partir|économi|au lieu|\bavant\b|barré|ancien|\/ ?mois|€ ?\/|par mois|mois|(?<![a-zà-ÿ])x ?\d|crédit|financ|retrait|frais|remise|réduction|-\s?\d+ ?%|éco-?part|ecopart|reprise|carte cadeau|code|cashback|rembours|soit |prix public|pvc|ppc|jusqu|conseillé|recommandé|référence|initial|habituel|le plus bas|was |rrp|garantie|assurance|\d ans? :|pour \d+ ans|estimée|prévue? le|par unit|par pièce|dépensé|fidélité|= ?\d+ ?points?|adhérez|abonnement|le kg|le litre|prix au |au kg|au litre|montant total|total dû|taeg|current price|original price|prix actuel|prix d'origine/i;
+  // Ancien prix annoncé sur la ligne d'avant (« Prix conseillé : » puis « 29,99 € »)
+  const ancienPrix = /conseillé|recommandé|référence|initial|habituel|barré|au lieu|\bavant\b|ancien|le plus bas|was|rrp|prix public|économ|livr|expédi|retrait|frais de port|garantie|assurance|extension|occasion|reconditionn|seconde main|point relais|express|install|mis en service|mise en service|^(express|standard|relais|colissimo|chronopost|ups|dpd|mondial relay|point relais|à domicile|en magasin|eco|économique)$/i;
+  // « 19,90 € », « 19 €90 » (Cdiscount, Leclerc…), « € 19.90 », « 19.90 EUR »
+  const motif = /(?<![\d,.])(\d{1,4}(?:[ .]\d{3})*)\s?€\s?(\d{2})(?!\d)|€\s?(\d{1,4}(?:[ .]\d{3})*(?:[,.]\d{1,2})?)(?![\d,.])|(?<![\d,.])(\d{1,4}(?:[ .]\d{3})*(?:[,.]\d{1,2})?)\s?(?:€|EUR(?:\b|(?=ou\b)))/gi;
+  const seulPrix = /^(?:prix\s*:?\s*)?(?:€\s?)?\d{1,4}(?:[ .]\d{3})*(?:[,.]\d{1,2})?\s?(?:€|EUR)?\s?(?:\d{2})?\s?(?:TTC)?$/i;
   const candidats = [];
+  // « En 4 fois » / « 3x sans frais » sur la ligne d'avant : c'est une mensualité, pas le prix
+  const mensualite = /en [2-9] ?fois|\b[2-9] ?x\b|mensualit|sans frais|paiement|payez en|échéance|versement|crédit|klarna|paypal|oney|alma|floa|scalapay/i;
+  // Sur la ligne d'avant, « Paiement en ligne · Service offert » (Auchan) ne veut pas dire « en plusieurs fois »
+  const mensualiteAvant = /en [2-9] ?fois|\b[2-9] ?x\b|mensualit|payez en|paiement en [2-9]|paiement de|1er paiement|premier paiement|sans frais|échéance|versement|klarna|paypal|oney|alma|floa|scalapay/i;
+  // « 40,28 € » puis « Prix conseillé par la coopérative » (Leclerc) : l'étiquette est en dessous de l'ancien prix
+  const etiquetteDessous = /^(prix )?(conseillé|recommandé|de référence|barré|initial|le plus bas|d'origine|habituel)(?!.*:\s*$)/i;
   lignes.forEach((l, i) => {
-    if (l.length > 140 || pasUnPrix.test(l)) return;
-    for (const m of l.matchAll(motif)){
-      const v = lirePrix(m[1] || m[2]);
-      if (v && v < 100000) candidats.push({ v, i });
-    }
+    const avant = lignes[i - 1] || "", apres = lignes[i + 1] || "";
+    if (etiquetteDessous.test(apres)) return;
+    // « 5 € » / « cagnottés » (Auchan), « 10 € » / « de réduction » : pas le prix
+    if (/^(cagnott|de réduction|d'économie|remboursés?|offerts?$|de remise)/i.test(apres)) return;
+    // Prix à l'unité, au kilo… souvent entre parenthèses : « ( » / « 174,95€ » / « 174,95€ / unité) » (Amazon)
+    if (avant === "(" || /^[\d\s,.€]*(\/|par) ?(unit|pièce|kg|litre|l\b)/i.test(apres)) return;
+    // Offre d'un vendeur « État : Reconditionné » juste au-dessus (Darty, Fnac…) : on garde le prix du neuf
+    const etat = lignes.slice(Math.max(0, i - 5), i).reverse().find(x => /^état\s*:/i.test(x));
+    if (etat && /reconditionn|occasion|seconde main|très bon|bon état|correct|comme neuf/i.test(etat)) return;
+    const etiquetteDuPrixDAvant = (etiquetteDessous.test(avant) && motif.test(lignes[i - 2] || "")) || /^prix (reconditionn|d'occasion)/i.test(avant); motif.lastIndex = 0;
+    // « 379,00 € neuf » : le prix du neuf donné pour comparer (Back Market)
+    if (/€ ?neuf\b/i.test(l)) return;
+    if (l.length > 140 || pasUnPrix.test(l) || mensualite.test(l) || mensualiteAvant.test(avant) || (avant.length <= 45 && ancienPrix.test(avant) && !etiquetteDuPrixDAvant)) return;
+    // Texte caché des cartes « produits conseillés » (Nike…) : « current price 132,99 €, original price 189,99 »
+    if (/current price|original price|prix d'origine/i.test(avant)) return;
+    // Les accessoires proposés juste en dessous (« Compléter avec », « Souvent achetés ensemble »…)
+    if (lignes.slice(Math.max(0, i - 3), i).some(x => /compl[éè]te[rz]? avec|achet[ée]s ensemble|vous aimerez|produits similaires|accessoires compatibles|les clients ont aussi/i.test(x))) return;
+    // « Dès » / « 11,25 € » / « /mois » : un prix « à partir de » ou une mensualité
+    if (/^\/ ?mois|^par mois|^\/ ?month/i.test(apres)) return;
+    // « Dès » / « À partir de » au-dessus : un prix possible, mais moins sûr
+    const aPartir = /^(dès|à partir de|a partir de|from)$/i.test(avant);
+    // « 115,00 € 85,00 € » sur une ligne : l'ancien prix puis le prix soldé, on ne garde que le second
+    const vus = [...l.matchAll(motif)].map(m => m[1] ? lirePrix(m[1] + "," + m[2]) : lirePrix(m[3] || m[4]));
+    vus.forEach((v, k) => {
+      if (vus.length === 2 && k === 0 && vus[1] < v) return;
+      if (v && v >= 0.5 && v < 100000) candidats.push({ v, i, seul: seulPrix.test(l) || (vus.length === 2 && /^[\d\s,.€]+$/.test(l)), aPartir });
+    });
   });
   if (candidats.length){
-    // Le premier prix de la page (hors livraison, mensualités…) est celui du produit
-    const premier = candidats[0];
+    // On note chaque prix pour trouver celui du produit (et pas ceux des autres versions, des produits conseillés…)
+    const panier = [];
+    lignes.forEach((l, i) => { if (/ajouter au panier|ajouter au sac|add to (cart|bag|basket)|^acheter|acheter maintenant|je l'achète|mettre au panier|commander|pré-?commander|pre-?order/i.test(l)) panier.push(i); });
+    const etudies = candidats.slice(0, 40), compte = {};
+    // Liste de variantes : « Noir » / « 199,99€ » / « Orange » / « 193,81€ » (Boulanger…)
+    const prixSeul = i => !!lignes[i] && seulPrix.test(lignes[i]);
+    candidats.forEach(c => { c.liste = (prixSeul(c.i - 2) && (lignes[c.i - 1] || "").length < 60) || (prixSeul(c.i + 2) && (lignes[c.i + 1] || "").length < 60); });
+    // Le dernier prix avant le bouton « Ajouter au panier » : c'est presque toujours celui du produit
+    panier.forEach(p => { const d = candidats.filter(c => c.i < p && p - c.i <= 40 && !c.liste).pop(); if (d) candidats.filter(c => c.v === d.v && d.i - c.i <= 5 && c.i <= d.i).forEach(c => { c.dernier = true; if (!etudies.includes(c)) etudies.push(c); }); });
+    etudies.forEach(c => compte[c.v] = (compte[c.v] || 0) + 1);
+    const prixSeulLigne = i => !!lignes[i] && seulPrix.test(lignes[i]);
+    const parLigne = {}; candidats.forEach(c => { if (parLigne[c.i] == null) parLigne[c.i] = c.v; });
+    etudies.forEach(c => {
+      let s = 0;
+      if (c.seul) s += 2;                                                   // le prix est seul sur sa ligne
+      if (panier.some(p => p > c.i && p - c.i <= 8)) s += 3;                // juste avant « Ajouter au panier »
+      if (c.dernier) s += 3;
+      if (c.liste) s -= 3;
+      if (c.aPartir) s -= 2;
+      if (/prix|price|tarif|en 1 fois|maintenant/i.test(lignes[c.i - 1] || "")) s += 1;
+      if (/^(prix|price|notre prix|prix de vente|prix actuel)\s*:?$/i.test(lignes[c.i - 1] || "")) s += 2;
+      if (compte[c.v] >= 2) s += 2;                                         // il revient plusieurs fois
+      if (prixSeulLigne(c.i - 1) && prixSeulLigne(c.i + 1)) s -= 3;         // au milieu d'une liste de prix (autres versions)
+      // Deux prix qui se suivent (« 99,99 € » puis « 69,99 € ») : le plus haut est l'ancien prix barré
+      const voisin = j => { const v = parLigne[j]; return v != null && seulPrix.test(lignes[j]) ? v : null; };
+      if (c.seul && ((voisin(c.i + 1) != null && voisin(c.i + 1) < c.v && voisin(c.i + 2) == null) || (voisin(c.i - 1) != null && voisin(c.i - 1) < c.v && voisin(c.i - 2) == null))) s -= 4;
+      // Juste après le vrai prix, on choisit sa taille ou sa couleur ; et le prix du produit vient en premier
+      if (lignes.slice(c.i + 1, c.i + 4).some(x => /taille|size|pointure|quantit|couleur|coloris/i.test(x))) s += 2;
+      if (c === etudies[0]) s += 1;
+      c.score = s;
+    });
+    const premier = etudies.reduce((a, b) => b.score > a.score ? b : a);
     r.prix = premier.v;
     // Le nom : au-dessus du prix, la ligne qui ressemble le plus à un nom de produit (la plus longue « courte » ligne)
     const pasUnNom = /€|:|accueil|menu|panier|connexion|compte|recherch|livraison|retour|avis|étoile|note|réf|référence|vendu|stock|disponib|quantité|ajouter|acheter|partager|favori|taille|couleur|guide|promo|nouveau|soldes|cookies|prix|accéder|aller au|contenu|pied de page|afficher|magasin|fermer|voir |plus de|découvr|inscri|newsletter|\{\{|^\d|^id /i;
@@ -1035,10 +1126,10 @@ function lireTextePage(texte){
 }
 
 // On a collé quelque chose : un lien, ou toute une page
-function recevoirCollage(texte){
+function recevoirCollage(texte, depuisCapture){
   const champ = $("#g-lien"), info = $("#g-info-lien");
   if (!champ) return;
-  if (estUnLien(texte)){ champ.value = texte.trim(); remplirDepuisLien(); return; }
+  if (!depuisCapture && estUnLien(texte)){ champ.value = texte.trim(); remplirDepuisLien(); return; }
   const r = lireTextePage(texte);
   if (r.lien && !champ.value.trim()){ champ.value = r.lien; dernierLienLu = r.lien; }
   const adresse = lireAdresse(champ.value.trim());
@@ -1048,15 +1139,66 @@ function recevoirCollage(texte){
   r.nom = adresse.nom || r.nom;
   const trouve = [];
   if (r.nom && mettreAuto("g-nom", nomEssentiel(r.nom))) trouve.push("le nom");
-  if (r.prix && mettreAuto("g-prix", String(r.prix).replace(".", ","))){ $("#g-estime").checked = false; trouve.push("le prix"); }
+  if (r.prix && mettreAuto("g-prix", (Number.isInteger(r.prix) ? String(r.prix) : r.prix.toFixed(2)).replace(".", ","))){ $("#g-estime").checked = false; trouve.push("le prix"); }
   const ajouts = [];
   if (r.taille){ ajouts.push("Taille " + (/^[a-z]{1,4}$/i.test(r.taille) ? r.taille.toUpperCase() : r.taille)); trouve.push("la taille"); }
   if (r.couleur){ ajouts.push("Couleur " + r.couleur); trouve.push("la couleur"); }
   if (ajouts.length) mettreAuto("g-precisions", ajouts.join(", "));
   const et = l => l.join(", ").replace(/, ([^,]*)$/, " et $1");
   info.textContent = trouve.length
-    ? "✅ J'ai trouvé " + et(trouve) + " dans la page. Vérifie, puis clique sur « Ajouter »." + (champ.value.trim() ? "" : " Pense à coller aussi le lien du produit.")
-    : "Je n'ai rien trouvé dans ce texte. Copie toute la page du produit (« Tout sélectionner » puis « Copier ») et recolle.";
+    ? "✅ J'ai trouvé " + et(trouve) + (depuisCapture ? " sur la capture" : " dans la page") + ". Vérifie, puis clique sur « Ajouter »." + (champ.value.trim() ? "" : " Pense à coller aussi le lien du produit.")
+    : depuisCapture
+      ? "Je n'arrive pas à lire cette capture. Refais-la avec le nom et le prix bien visibles, ou écris-les à la main."
+      : "Je n'ai rien trouvé dans ce texte. Fais plutôt une capture d'écran de la page du produit et appuie sur « 📸 Capture ».";
+}
+
+/* ---------- Capture d'écran ----------
+   La capture est lue sur le téléphone lui-même (elle n'est envoyée nulle part), puis effacée au bout d'une minute. */
+let lecteurCapture = null, minuteurCapture = null;
+function chargerLecteur(){
+  if (window.Tesseract) return Promise.resolve();
+  if (!lecteurCapture) lecteurCapture = new Promise((ok, ko) => {
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
+    s.onload = ok; s.onerror = () => { lecteurCapture = null; ko(); };
+    document.head.append(s);
+  });
+  return lecteurCapture;
+}
+async function lireCapture(fichier){
+  const zone = $("#g-capture"), info = $("#g-info-lien");
+  if (!zone || !info) return;
+  // L'aperçu, avec le compte à rebours avant qu'il s'efface
+  clearInterval(minuteurCapture);
+  const url = URL.createObjectURL(fichier);
+  const img = el("img"); img.src = url; img.alt = "Ta capture d'écran";
+  const compte = el("span", "compte");
+  const effacerCapture = () => {
+    clearInterval(minuteurCapture); URL.revokeObjectURL(url);
+    if (zone.contains(img)){ zone.replaceChildren(); zone.hidden = true; }
+  };
+  const fermer = bouton("btn ghost small", "✕ Effacer la capture", effacerCapture);
+  zone.replaceChildren(img, el("div", "pied-capture"));
+  zone.lastChild.append(compte, fermer);
+  zone.hidden = false;
+  let reste = 60;
+  const majCompte = () => { compte.textContent = "🕐 S'efface dans " + reste + " s"; };
+  majCompte();
+  minuteurCapture = setInterval(() => { reste--; if (reste <= 0) effacerCapture(); else majCompte(); }, 1000);
+
+  info.textContent = "🔎 Je lis la capture… (la première fois, ça peut prendre 10 à 20 secondes)";
+  try{
+    await chargerLecteur();
+    const lecteur = await Tesseract.createWorker("fra");
+    const { data } = await lecteur.recognize(fichier);
+    await lecteur.terminate();
+    // Les lecteurs d'image confondent parfois « € » avec « E » ou « e »
+    const texte = (data.text || "").replace(/(\d[.,]\d{2}) ?[Ee€](?![a-zé])/g, "$1 €").replace(/(\d) ?[Ee€](\d{2})(?!\d)/g, "$1 €$2");
+    if (!$("#g-capture")) return; // on a quitté la page entre-temps
+    recevoirCollage(texte, true);
+  }catch{
+    info.textContent = "Je n'ai pas pu lire la capture (pas de connexion ?). Réessaie, ou écris le nom et le prix à la main.";
+  }
 }
 
 // Le nom du cadeau, juste l'essentiel : sans la couleur, sans la description après la virgule.
@@ -1070,7 +1212,20 @@ function nomEssentiel(nom){
   while (debut.split(" ").length < 3 && i < morceaux.length) debut += " " + morceaux[i++];
   if (debut.length >= 6) n = debut;
   n = n.replace(new RegExp("\\b(" + COULEURS_NOM + ")(\\s+(et|/)\\s+(" + COULEURS_NOM + "))*\\b", "gi"), " ")
+    // Les détails techniques : « (version 2024) », « 7 kg », « 128 Go », « 1400 W », « 32 cm », les références « WW70FG3M05AWEF »
+    .replace(/\([^)]*\)|\[[^\]]*\]/g, " ")
+    .replace(/\b\d+([.,]\d+)?\s?(kg|g|go|to|mo|w|v|mah|cm|mm|m|l|ml|cl|pouces?|"|trs?\/min|hz|ghz|mp|%)(?![a-zà-ÿ])/gi, " ")
+    .replace(/(?<![\w-])(?=[a-z0-9]*\d)(?=[a-z0-9]*[a-z])[a-z0-9]{7,}(?![\w-])/gi, " ")
+    .replace(/\b(pour )?(homme|femme|mixte|unisexe|adulte|gar[çc]on|fille)s?\b/gi, " ")
     .replace(/\s+/g, " ").replace(/^[\s,/-]+|[\s,/-]+$/g, "").trim();
+  // Un nom tout en MAJUSCULES : on le remet en minuscules
+  // (mais « EA SPORTS FC 27 » reste comme ça : c'est une marque)
+  if (n === n.toUpperCase() && n.split(" ").filter(m => /^[A-ZÀ-Ý]{4,}$/.test(m)).length >= 2) n = n.toLowerCase();
+  // 6 mots au plus, sans finir sur un petit mot (« de », « et », « pour »…)
+  let mots = n.split(" ");
+  if (mots.length > 6) mots = mots.slice(0, 6);
+  while (mots.length > 2 && /^(de|du|des|et|pour|avec|à|a|en|le|la|les|l'|d'|sans|sur|au|aux|-|\/|&)$/i.test(mots[mots.length - 1])) mots.pop();
+  n = mots.join(" ");
   return n ? n.charAt(0).toUpperCase() + n.slice(1) : String(nom || "").trim();
 }
 
